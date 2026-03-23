@@ -68,10 +68,10 @@ a valid skill directory.
 
 ```bash
 # Terminal report (for display)
-python <skill-path>/scripts/skill_validator.py <target-skill-path>
+python3 <skill-path>/scripts/skill_validator.py <target-skill-path>
 
 # JSON report (for your analysis)
-python <skill-path>/scripts/skill_validator.py <target-skill-path> \
+python3 <skill-path>/scripts/skill_validator.py <target-skill-path> \
     --no-color -o "$WORK_DIR/scan_report.json"
 ```
 
@@ -103,7 +103,7 @@ The script reads `VT_API_KEY` from the environment automatically. If the user de
 doesn't have a key, skip this step.
 
 ```bash
-python <skill-path>/scripts/vt_scan.py <target-skill-path> \
+python3 <skill-path>/scripts/vt_scan.py <target-skill-path> \
     --no-color -o "$WORK_DIR/vt_report.json"
 ```
 
