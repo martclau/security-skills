@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import secrets
 import sys
 import time
 import urllib.error
@@ -96,6 +97,10 @@ def vt_request(method: str, url: str, api_key: str,
                data: bytes = None, headers: dict = None,
                content_type: str = None) -> dict:
     """Make an API request to VirusTotal. Returns parsed JSON."""
+    # Restrict to HTTPS only (addresses Bandit B310 — prevents file:// scheme abuse)
+    if not url.startswith("https://"):
+        raise RuntimeError(f"Refusing non-HTTPS URL: {url}")
+
     hdrs = {"x-apikey": api_key, "Accept": "application/json"}
     if headers:
         hdrs.update(headers)
@@ -115,7 +120,7 @@ def vt_request(method: str, url: str, api_key: str,
 
 def upload_file(filepath: Path, api_key: str) -> str:
     """Upload a file to VirusTotal. Returns the analysis ID."""
-    boundary = "----VTBoundary" + hashlib.md5(str(time.time()).encode()).hexdigest()[:12]
+    boundary = "----VTBoundary" + secrets.token_hex(12)
 
     file_content = filepath.read_bytes()
     filename = filepath.name
@@ -448,8 +453,9 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument("path", type=Path, help="Path to the skill directory")
-    parser.add_argument("--api-key", required=True,
-                        help="VirusTotal API key (free tier: https://www.virustotal.com/gui/join-us)")
+    parser.add_argument("--api-key", default=None,
+                        help="VirusTotal API key. Can also be set via VT_API_KEY env var. "
+                             "(free tier: https://www.virustotal.com/gui/join-us)")
     parser.add_argument("--output", "-o", type=Path, default=None,
                         help="Write JSON report to file")
     parser.add_argument("--no-color", action="store_true",
@@ -462,13 +468,17 @@ def main():
         print(f"ERROR: Path {args.path} does not exist.", file=sys.stderr)
         sys.exit(1)
 
-    if not args.api_key or len(args.api_key) < 20:
+    # Prefer env var over CLI arg to avoid key in shell history / process listing
+    api_key = os.environ.get("VT_API_KEY") or args.api_key
+    if not api_key or len(api_key) < 20:
         print("ERROR: A valid VirusTotal API key is required.", file=sys.stderr)
+        print("Set via: export VT_API_KEY='your-key-here'", file=sys.stderr)
+        print("Or pass: --api-key 'your-key-here'", file=sys.stderr)
         print("Get a free key at: https://www.virustotal.com/gui/join-us", file=sys.stderr)
         sys.exit(1)
 
     print(f"\n  Scanning scripts in: {args.path}\n")
-    summary = scan_skill_scripts(args.path, args.api_key, args.poll_timeout)
+    summary = scan_skill_scripts(args.path, api_key, args.poll_timeout)
 
     print_report(summary, use_color=not args.no_color)
 

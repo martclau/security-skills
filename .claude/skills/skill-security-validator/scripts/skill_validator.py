@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Skill Validator — Audits agent skill directories for potentially malicious behavior.
+Skill Validator v2 — Audits agent skill directories for potentially malicious behavior.
 
-Scans SKILL.md files, bundled scripts, and reference docs for:
-  - Dangerous shell commands and code patterns
-  - Suspicious network / exfiltration activity
-  - Sensitive file access and credential harvesting
-  - Obfuscation techniques (base64, hex, eval, etc.)
-  - Prompt injection / guardrail override attempts
-  - Overly broad or unnecessary permissions
-  - Supply-chain risks (runtime downloads, remote code exec)
+Improvements over v1 (based on security review):
+  - Two-line sliding window catches patterns split across lines
+  - Scans files by shebang (#!), not just extension
+  - Flags unknown-extension files as suspicious
+  - Extracts URLs from network calls for manual verification
+  - New rules: raw sockets, os.environ, ctypes, file writes, zlib/gzip,
+    codecs.decode, YAML !!python, reversed strings, __builtins__, globals/locals
+  - importlib bumped to MEDIUM
 
 Usage:
     python skill_validator.py /path/to/skill-folder          # validate one skill
@@ -31,11 +31,11 @@ from typing import Optional
 # ─── Severity ────────────────────────────────────────────────────────────────
 
 class Severity(str, Enum):
-    CRITICAL = "CRITICAL"   # Almost certainly malicious
-    HIGH     = "HIGH"       # Very likely harmful or deceptive
-    MEDIUM   = "MEDIUM"     # Suspicious, needs manual review
-    LOW      = "LOW"        # Unusual but possibly benign
-    INFO     = "INFO"       # Informational note
+    CRITICAL = "CRITICAL"
+    HIGH     = "HIGH"
+    MEDIUM   = "MEDIUM"
+    LOW      = "LOW"
+    INFO     = "INFO"
 
 
 # ─── Finding dataclass ───────────────────────────────────────────────────────
@@ -48,22 +48,25 @@ class Finding:
     file: str
     line: Optional[int] = None
     snippet: str = ""
+    extracted_urls: list = field(default_factory=list)
 
     def to_dict(self):
         d = asdict(self)
         d["severity"] = self.severity.value
+        if not d["extracted_urls"]:
+            del d["extracted_urls"]
         return d
 
 
 # ─── Rule definitions ────────────────────────────────────────────────────────
-# Each rule: (compiled regex, severity, category, description)
-# Regexes are applied per-line; some are multi-word to reduce false positives.
+# Each rule: (compiled regex, severity, category, description, multiline?)
+# multiline=True means the pattern is tested against pairs of consecutive lines.
 
-RULES: list[tuple[re.Pattern, Severity, str, str]] = []
+RULES: list[tuple[re.Pattern, Severity, str, str, bool]] = []
 
 def rule(pattern: str, severity: Severity, category: str, description: str,
-         flags: int = re.IGNORECASE):
-    RULES.append((re.compile(pattern, flags), severity, category, description))
+         flags: int = re.IGNORECASE, multiline: bool = False):
+    RULES.append((re.compile(pattern, flags), severity, category, description, multiline))
 
 
 # ── Network / Exfiltration ───────────────────────────────────────────────────
@@ -79,16 +82,16 @@ rule(r'\bcurl\b.*\|.*\b(bash|sh|python|perl|ruby|node)\b',
 rule(r'\bwget\b.*\|.*\b(bash|sh|python|perl|ruby|node)\b',
      Severity.CRITICAL, "remote_code_exec",
      "Pipe from wget into a shell/interpreter — remote code execution")
-rule(r'\bfetch\s*\(',
+rule(r'\bfetch\s*\(\s*["\']https?://',
      Severity.MEDIUM, "network",
-     "JavaScript fetch() call detected — verify the target URL is legitimate")
+     "JavaScript fetch() call — verify the target URL is legitimate")
 rule(r'\brequests\.(get|post|put|patch|delete)\s*\(',
      Severity.MEDIUM, "network",
      "Python requests library call — verify the URL and data payload")
-rule(r'\burllib\.request',
+rule(r'\burllib\.request\.(urlopen|Request)\s*\(',
      Severity.MEDIUM, "network",
-     "Python urllib usage — verify target URL")
-rule(r'\bhttpx\.',
+     "Python urllib usage — verify target URL and scheme restriction")
+rule(r'\bhttpx\.\w+\s*\(',
      Severity.MEDIUM, "network",
      "Python httpx usage — verify target URL")
 rule(r'\b(nc|ncat|netcat)\b.*(-e|-c|--exec)',
@@ -97,6 +100,23 @@ rule(r'\b(nc|ncat|netcat)\b.*(-e|-c|--exec)',
 rule(r'ngrok|localtunnel|bore\.pub|serveo\.net',
      Severity.HIGH, "network",
      "Tunnel service reference — may expose local services or exfiltrate data")
+
+# ── Raw socket access (NEW — addresses review 1.5) ──────────────────────────
+rule(r'\bsocket\.socket\s*\(',
+     Severity.HIGH, "network",
+     "Raw socket creation — can exfiltrate data bypassing all HTTP-level detection")
+rule(r'\bsocket\.connect\s*\(',
+     Severity.HIGH, "network",
+     "Raw socket connect — direct TCP connection bypasses HTTP-level monitoring")
+rule(r'\bsocket\.(send|sendall|sendto|recv|recvfrom)\s*\(',
+     Severity.HIGH, "network",
+     "Raw socket data transfer — low-level network I/O, verify purpose")
+
+# ── Multi-line network evasion (NEW — addresses review 2.1) ─────────────────
+rule(r'(curl|wget|requests\.|urllib|httpx|fetch\s*\().*https?://',
+     Severity.MEDIUM, "network",
+     "Network call with URL — verify destination is expected",
+     multiline=True)
 
 # ── Dangerous Shell Commands ─────────────────────────────────────────────────
 rule(r'\beval\b.*\$',
@@ -133,6 +153,26 @@ rule(r'\bdd\b.*\bof\s*=\s*/dev/',
      Severity.CRITICAL, "destructive",
      "dd writing to device — can destroy disk/partitions")
 
+# ── Python sandbox escape / runtime manipulation (NEW — addresses review 1.2) ─
+rule(r'\b__builtins__\b',
+     Severity.HIGH, "code_injection",
+     "__builtins__ access — can restore restricted built-in functions for sandbox escape")
+rule(r'\b(globals|locals)\s*\(\s*\)',
+     Severity.MEDIUM, "code_injection",
+     "globals()/locals() access — runtime namespace manipulation")
+rule(r'\btype\s*\(\s*["\']',
+     Severity.MEDIUM, "code_injection",
+     "type() as metaclass constructor — can create classes with arbitrary methods at runtime")
+rule(r'\bctypes\b',
+     Severity.HIGH, "code_injection",
+     "ctypes usage — direct C-level memory access, can bypass all Python-level restrictions")
+rule(r'\bimportlib\b',
+     Severity.MEDIUM, "supply_chain",
+     "Dynamic module import via importlib — verify what is being loaded at runtime")
+rule(r'\bimportlib\.import_module\s*\(',
+     Severity.MEDIUM, "supply_chain",
+     "importlib.import_module() — dynamic module loading, verify the module name")
+
 # ── Sensitive File Access ────────────────────────────────────────────────────
 rule(r'~?/\.ssh/',
      Severity.HIGH, "credential_access",
@@ -162,10 +202,42 @@ rule(r'\bkeychain\b|\bkeyring\b',
      Severity.HIGH, "credential_access",
      "Accesses system keychain/keyring — may steal stored credentials")
 
+# ── Environment variable harvesting (NEW — addresses review 1.6) ─────────────
+rule(r'\bos\.environ\b(?!\.(copy|get\s*\(\s*["\']PATH))',
+     Severity.MEDIUM, "credential_access",
+     "os.environ access — environment may contain API keys, tokens, and credentials")
+rule(r'\bos\.environ\s*\[\s*["\'].*(KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)',
+     Severity.HIGH, "credential_access",
+     "Reading specific secret from environment variable — verify this is needed")
+rule(r'\bos\.getenv\s*\(\s*["\'].*(KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)',
+     Severity.HIGH, "credential_access",
+     "Reading specific secret from environment variable — verify this is needed")
+rule(r'\bos\.environ\.items\s*\(\s*\)',
+     Severity.HIGH, "credential_access",
+     "Enumerating all environment variables — likely credential harvesting")
+
+# ── File write operations (NEW — addresses review 1.4) ───────────────────────
+rule(r'\bopen\s*\(.*["\']w["\']\s*\)|\bopen\s*\(.*["\']a["\']\s*\)',
+     Severity.LOW, "file_write",
+     "File opened for writing/appending — verify the destination path")
+rule(r'\bopen\s*\(.*/etc/|/root/|/home/|~/',
+     Severity.HIGH, "file_write",
+     "File write to sensitive system path — verify this is needed and expected")
+rule(r'\bshutil\.(copy|copy2|move|copytree)\s*\(',
+     Severity.LOW, "file_write",
+     "File copy/move operation — verify source and destination")
+rule(r'\bPath\s*\(.*\)\s*\.\s*(write_text|write_bytes)\s*\(',
+     Severity.LOW, "file_write",
+     "pathlib write operation — verify the destination path")
+rule(r'(open|write_text|write_bytes|shutil)\s*\(.*(/tmp/|tempfile)',
+     Severity.MEDIUM, "file_write",
+     "Writing to temp directory — may be a staging area for exfiltration",
+     multiline=True)
+
 # ── Obfuscation ──────────────────────────────────────────────────────────────
-rule(r'\bbase64\b.*(decode|b64decode|atob)',
+rule(r'\bbase64\b.*(decode|b64decode|atob|b85decode|b32decode|decodebytes)',
      Severity.MEDIUM, "obfuscation",
-     "Base64 decoding — check what payload is being decoded")
+     "Base64/b85/b32 decoding — check what payload is being decoded")
 rule(r'\\x[0-9a-fA-F]{2}(\\x[0-9a-fA-F]{2}){5,}',
      Severity.HIGH, "obfuscation",
      "Long hex-escaped string — possibly obfuscated payload")
@@ -184,6 +256,29 @@ rule(r'getattr\s*\(.*,\s*["\']__',
 rule(r'\[ *["\']_' r'_[a-z]+__["\'] *\]',
      Severity.MEDIUM, "obfuscation",
      "Bracket access to dunder attribute — may bypass restrictions")
+
+# ── Additional obfuscation (NEW — addresses review 1.1) ─────────────────────
+rule(r'\bcodecs\.decode\s*\(',
+     Severity.MEDIUM, "obfuscation",
+     "codecs.decode() — can decode ROT13, hex, and other encodings to hide payloads")
+rule(r'["\']rot.?13["\']',
+     Severity.HIGH, "obfuscation",
+     "ROT13 encoding reference — commonly used to hide malicious strings")
+rule(r'\bzlib\.(decompress|decompressobj)\s*\(',
+     Severity.MEDIUM, "obfuscation",
+     "zlib decompression — check what compressed payload is being extracted")
+rule(r'\bgzip\.(decompress|open)\s*\(',
+     Severity.MEDIUM, "obfuscation",
+     "gzip decompression — check what compressed payload is being extracted")
+rule(r'\[::\s*-1\s*\]',
+     Severity.LOW, "obfuscation",
+     "String reversal ([::-1]) — can hide malicious strings when combined with other techniques")
+rule(r'\bbz2\.(decompress|open)\s*\(',
+     Severity.MEDIUM, "obfuscation",
+     "bz2 decompression — check what compressed payload is being extracted")
+rule(r'\blzma\.(decompress|open)\s*\(',
+     Severity.MEDIUM, "obfuscation",
+     "lzma decompression — check what compressed payload is being extracted")
 
 # ── Prompt Injection / Guardrail Override ─────────────────────────────────────
 rule(r'ignore\s+(all\s+)?previous\s+instructions',
@@ -224,9 +319,17 @@ rule(r'npm\s+install.*--registry\s+(?!https://registry\.npmjs\.org)',
 rule(r'git\s+clone\b',
      Severity.LOW, "supply_chain",
      "git clone detected — verify the repository is trusted")
-rule(r'\bimportlib\b',
-     Severity.LOW, "supply_chain",
-     "Dynamic module import — verify what's being loaded at runtime")
+
+# ── YAML deserialization (NEW — addresses review 2.3) ────────────────────────
+rule(r'!!python/',
+     Severity.CRITICAL, "code_injection",
+     "YAML !!python/ tag — arbitrary Python code execution via YAML deserialization")
+rule(r'\byaml\.load\s*\((?!.*Loader\s*=\s*yaml\.SafeLoader)',
+     Severity.HIGH, "code_injection",
+     "yaml.load() without SafeLoader — vulnerable to arbitrary code execution via YAML")
+rule(r'\byaml\.unsafe_load\s*\(',
+     Severity.HIGH, "code_injection",
+     "yaml.unsafe_load() — explicitly allows arbitrary code execution via YAML")
 
 # ── Persistence / Startup Modification ────────────────────────────────────────
 rule(r'(crontab|/etc/cron)',
@@ -251,12 +354,21 @@ rule(r'\bsetuid\b|\bsetgid\b|\bSUID\b',
      "SUID/SGID reference — privilege escalation risk")
 
 # ── Data Collection ──────────────────────────────────────────────────────────
-rule(r'\b(whoami|hostname|uname\s+-a|id\b|ifconfig|ip\s+addr)',
+rule(r'\b(whoami|hostname|uname\s+-a|ifconfig|ip\s+addr)\b',
      Severity.LOW, "reconnaissance",
      "System info gathering — benign alone but suspicious in combination")
 rule(r'\bfind\s+/\s+.*-name\b.*\.(pem|key|crt|p12|pfx)',
      Severity.HIGH, "credential_access",
      "Searching filesystem for certificates/keys")
+
+
+# ─── URL Extractor ───────────────────────────────────────────────────────────
+
+URL_PATTERN = re.compile(r'https?://[^\s"\'`,;)\]}>]+', re.IGNORECASE)
+
+def extract_urls(text: str) -> list[str]:
+    """Extract HTTP/HTTPS URLs from text for manual verification."""
+    return URL_PATTERN.findall(text)
 
 
 # ─── Scanner ─────────────────────────────────────────────────────────────────
@@ -270,10 +382,34 @@ SCANNABLE_EXTENSIONS = {
 }
 
 
+def has_shebang(filepath: Path) -> bool:
+    """Check if a file starts with a shebang (#!) line."""
+    try:
+        with open(filepath, "rb") as f:
+            first_bytes = f.read(2)
+            return first_bytes == b"#!"
+    except Exception:
+        return False
+
+
+def is_text_file(filepath: Path) -> bool:
+    """Heuristic check: is this file likely text (not binary)?"""
+    try:
+        with open(filepath, "rb") as f:
+            chunk = f.read(8192)
+            if b"\x00" in chunk:
+                return False
+            return True
+    except Exception:
+        return False
+
+
 @dataclass
 class ScanResult:
     skill_path: str
     files_scanned: int = 0
+    files_flagged_unknown_ext: int = 0
+    extracted_urls: list = field(default_factory=list)
     findings: list = field(default_factory=list)
     errors: list = field(default_factory=list)
 
@@ -296,7 +432,7 @@ class ScanResult:
         return "PASS — no significant issues detected"
 
     def to_dict(self):
-        return {
+        d = {
             "skill_path": self.skill_path,
             "verdict": self.verdict,
             "files_scanned": self.files_scanned,
@@ -304,10 +440,13 @@ class ScanResult:
             "findings": [f.to_dict() for f in self.findings],
             "errors": self.errors,
         }
+        if self.extracted_urls:
+            d["extracted_urls"] = sorted(set(self.extracted_urls))
+        return d
 
 
-def scan_file(filepath: Path, findings: list[Finding]):
-    """Scan a single file against all rules."""
+def scan_file(filepath: Path, findings: list[Finding], all_urls: list[str]):
+    """Scan a single file against all rules, including two-line window for multiline rules."""
     try:
         text = filepath.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
@@ -316,10 +455,18 @@ def scan_file(filepath: Path, findings: list[Finding]):
     rel = str(filepath)
     lines = text.splitlines()
 
+    # Extract URLs from entire file for the report
+    file_urls = extract_urls(text)
+    all_urls.extend(file_urls)
+
+    # Single-line rules
     for line_num, line in enumerate(lines, start=1):
-        for pattern, severity, category, description in RULES:
+        for pattern, severity, category, description, is_multiline in RULES:
+            if is_multiline:
+                continue
             if pattern.search(line):
                 snippet = line.strip()[:120]
+                line_urls = extract_urls(line)
                 findings.append(Finding(
                     severity=severity,
                     category=category,
@@ -327,8 +474,53 @@ def scan_file(filepath: Path, findings: list[Finding]):
                     file=rel,
                     line=line_num,
                     snippet=snippet,
+                    extracted_urls=line_urls,
                 ))
+
+    # Two-line sliding window for multiline rules (addresses review 2.1)
+    for i in range(len(lines) - 1):
+        combined = lines[i] + " " + lines[i + 1]
+        for pattern, severity, category, description, is_multiline in RULES:
+            if not is_multiline:
+                continue
+            if pattern.search(combined):
+                snippet = (lines[i].strip() + " | " + lines[i + 1].strip())[:120]
+                line_urls = extract_urls(combined)
+                findings.append(Finding(
+                    severity=severity,
+                    category=category,
+                    message=description + " (multi-line match)",
+                    file=rel,
+                    line=i + 1,
+                    snippet=snippet,
+                    extracted_urls=line_urls,
+                ))
+
     return None
+
+
+def should_scan(filepath: Path) -> tuple[bool, bool]:
+    """Decide whether to scan a file. Returns (should_scan, is_unknown_ext).
+    Scans by extension OR shebang presence. Flags unknown-extension text files.
+    """
+    ext = filepath.suffix.lower()
+
+    # Always scan known extensions
+    if ext in SCANNABLE_EXTENSIONS:
+        return True, False
+
+    # Scan files with shebangs regardless of extension (addresses review 2.3)
+    if has_shebang(filepath):
+        return True, True
+
+    # For files with no extension or unknown extension, scan if they're text
+    if ext == "" or ext not in SCANNABLE_EXTENSIONS:
+        if is_text_file(filepath) and filepath.stat().st_size > 0:
+            # Only flag/scan if it's not a trivially small file
+            if filepath.stat().st_size > 50:
+                return True, True
+
+    return False, False
 
 
 def structural_checks(skill_dir: Path, findings: list[Finding]):
@@ -356,7 +548,6 @@ def structural_checks(skill_dir: Path, findings: list[Finding]):
             file=str(skill_md),
         ))
     else:
-        # Check required fields
         fm_end = content.find("---", 3)
         if fm_end > 0:
             frontmatter = content[3:fm_end]
@@ -375,9 +566,9 @@ def structural_checks(skill_dir: Path, findings: list[Finding]):
                     file=str(skill_md),
                 ))
 
-    # 3. Check for suspiciously large files (possible data embedding)
+    # 3. Suspiciously large files
     for f in skill_dir.rglob("*"):
-        if f.is_file() and f.stat().st_size > 1_000_000:  # 1 MB
+        if f.is_file() and f.stat().st_size > 1_000_000:
             findings.append(Finding(
                 severity=Severity.MEDIUM,
                 category="structure",
@@ -385,14 +576,17 @@ def structural_checks(skill_dir: Path, findings: list[Finding]):
                 file=str(f),
             ))
 
-    # 4. Unexpected binary files
-    binary_extensions = {".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".wasm", ".com"}
+    # 4. Unexpected binary files (expanded list)
+    binary_extensions = {
+        ".exe", ".dll", ".so", ".dylib", ".bin", ".wasm", ".com",
+        ".msi", ".deb", ".rpm", ".apk", ".elf",
+    }
     for f in skill_dir.rglob("*"):
         if f.suffix.lower() in binary_extensions:
             findings.append(Finding(
                 severity=Severity.HIGH,
                 category="structure",
-                message=f"Binary file ({f.suffix}) in skill — binaries are difficult to audit and rarely needed",
+                message=f"Binary executable ({f.suffix}) in skill — binaries are difficult to audit and rarely needed",
                 file=str(f),
             ))
 
@@ -405,6 +599,17 @@ def structural_checks(skill_dir: Path, findings: list[Finding]):
             file=str(f),
         ))
 
+    # 6. Files with no extension that contain executable code (addresses review 2.3)
+    for f in skill_dir.rglob("*"):
+        if f.is_file() and f.suffix == "" and f.name != "SKILL.md" and f.name != "LICENSE":
+            if has_shebang(f):
+                findings.append(Finding(
+                    severity=Severity.MEDIUM,
+                    category="structure",
+                    message="Executable file with no extension (has shebang) — harder to audit, verify purpose",
+                    file=str(f),
+                ))
+
 
 def scan_skill(skill_dir: Path) -> ScanResult:
     """Run the full scan on a skill directory."""
@@ -413,17 +618,28 @@ def scan_skill(skill_dir: Path) -> ScanResult:
     # Structural checks
     structural_checks(skill_dir, result.findings)
 
-    # Scan each text file
+    # Scan files
     for filepath in sorted(skill_dir.rglob("*")):
         if not filepath.is_file():
             continue
-        if filepath.suffix.lower() not in SCANNABLE_EXTENSIONS:
-            continue
 
-        result.files_scanned += 1
-        err = scan_file(filepath, result.findings)
-        if err:
-            result.errors.append(f"{filepath}: {err}")
+        do_scan, is_unknown = should_scan(filepath)
+
+        if is_unknown:
+            result.files_flagged_unknown_ext += 1
+            # Flag unknown-extension files that will be scanned
+            result.findings.append(Finding(
+                severity=Severity.LOW,
+                category="structure",
+                message=f"File with non-standard extension '{filepath.suffix or '(none)'}' — scanned due to shebang or text content",
+                file=str(filepath),
+            ))
+
+        if do_scan:
+            result.files_scanned += 1
+            err = scan_file(filepath, result.findings, result.extracted_urls)
+            if err:
+                result.errors.append(f"{filepath}: {err}")
 
     # Sort findings: CRITICAL first
     severity_order = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2,
@@ -436,11 +652,11 @@ def scan_skill(skill_dir: Path) -> ScanResult:
 # ─── Reporting ───────────────────────────────────────────────────────────────
 
 COLORS = {
-    "CRITICAL": "\033[1;91m",  # bold red
-    "HIGH":     "\033[91m",    # red
-    "MEDIUM":   "\033[93m",    # yellow
-    "LOW":      "\033[96m",    # cyan
-    "INFO":     "\033[90m",    # gray
+    "CRITICAL": "\033[1;91m",
+    "HIGH":     "\033[91m",
+    "MEDIUM":   "\033[93m",
+    "LOW":      "\033[96m",
+    "INFO":     "\033[90m",
     "RESET":    "\033[0m",
     "BOLD":     "\033[1m",
     "DIM":      "\033[2m",
@@ -448,15 +664,17 @@ COLORS = {
 
 
 def print_report(result: ScanResult, use_color: bool = True):
-    """Pretty-print the scan report to stdout."""
     c = COLORS if use_color else {k: "" for k in COLORS}
 
     print()
-    print(f"{c['BOLD']}{'═' * 70}{c['RESET']}")
-    print(f"{c['BOLD']}  SKILL SECURITY AUDIT REPORT{c['RESET']}")
-    print(f"{c['BOLD']}{'═' * 70}{c['RESET']}")
+    print(f"{c['BOLD']}{'=' * 70}{c['RESET']}")
+    print(f"{c['BOLD']}  SKILL SECURITY AUDIT REPORT (v2){c['RESET']}")
+    print(f"{c['BOLD']}{'=' * 70}{c['RESET']}")
     print(f"  Skill:          {result.skill_path}")
-    print(f"  Files scanned:  {result.files_scanned}")
+    print(f"  Files scanned:  {result.files_scanned}", end="")
+    if result.files_flagged_unknown_ext:
+        print(f" ({result.files_flagged_unknown_ext} non-standard extension)", end="")
+    print()
 
     counts = result.counts
     verdict = result.verdict
@@ -472,7 +690,6 @@ def print_report(result: ScanResult, use_color: bool = True):
     print(f"  Verdict:        {v_color}{verdict}{c['RESET']}")
     print()
 
-    # Summary counts
     labels = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
     parts = []
     for lbl in labels:
@@ -481,42 +698,49 @@ def print_report(result: ScanResult, use_color: bool = True):
             parts.append(f"{c[lbl]}{cnt} {lbl}{c['RESET']}")
         else:
             parts.append(f"{c['DIM']}{cnt} {lbl}{c['RESET']}")
-    print(f"  {' │ '.join(parts)}")
-    print(f"{c['BOLD']}{'─' * 70}{c['RESET']}")
+    print(f"  {' | '.join(parts)}")
+    print(f"{c['BOLD']}{'-' * 70}{c['RESET']}")
 
     if not result.findings:
         print(f"\n  {c['BOLD']}No issues found.{c['RESET']}\n")
-        return
+    else:
+        categories: dict[str, list[Finding]] = {}
+        for f in result.findings:
+            categories.setdefault(f.category, []).append(f)
 
-    # Group by category
-    categories: dict[str, list[Finding]] = {}
-    for f in result.findings:
-        categories.setdefault(f.category, []).append(f)
+        for cat, findings in categories.items():
+            print(f"\n  {c['BOLD']}[{cat.upper()}]{c['RESET']}")
+            for f in findings:
+                sev_c = c[f.severity.value]
+                loc = f.file
+                if f.line:
+                    loc += f":{f.line}"
+                print(f"    {sev_c}[{f.severity.value}]{c['RESET']} {f.message}")
+                print(f"    {c['DIM']}|- {loc}{c['RESET']}")
+                if f.snippet:
+                    print(f"    {c['DIM']}   {f.snippet}{c['RESET']}")
+                if f.extracted_urls:
+                    for url in f.extracted_urls[:3]:
+                        print(f"    {c['MEDIUM']}   URL: {url}{c['RESET']}")
 
-    for cat, findings in categories.items():
-        print(f"\n  {c['BOLD']}[{cat.upper()}]{c['RESET']}")
-        for f in findings:
-            sev_c = c[f.severity.value]
-            loc = f.file
-            if f.line:
-                loc += f":{f.line}"
-            print(f"    {sev_c}[{f.severity.value}]{c['RESET']} {f.message}")
-            print(f"    {c['DIM']}└─ {loc}{c['RESET']}")
-            if f.snippet:
-                print(f"    {c['DIM']}   {f.snippet}{c['RESET']}")
+    # Print extracted URLs summary
+    unique_urls = sorted(set(result.extracted_urls))
+    if unique_urls:
+        print(f"\n  {c['BOLD']}[EXTRACTED URLS]{c['RESET']} — verify each destination is expected:")
+        for url in unique_urls:
+            print(f"    {c['MEDIUM']}{url}{c['RESET']}")
 
     if result.errors:
         print(f"\n  {c['BOLD']}[ERRORS]{c['RESET']}")
         for e in result.errors:
             print(f"    {c['HIGH']}{e}{c['RESET']}")
 
-    print(f"\n{c['BOLD']}{'═' * 70}{c['RESET']}\n")
+    print(f"\n{c['BOLD']}{'=' * 70}{c['RESET']}\n")
 
 
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 
 def find_skill_dirs(root: Path, recursive: bool) -> list[Path]:
-    """Find skill directories (those containing SKILL.md)."""
     if (root / "SKILL.md").exists():
         return [root]
 
@@ -533,7 +757,7 @@ def find_skill_dirs(root: Path, recursive: bool) -> list[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Audit an agent skill directory for malicious behavior.",
+        description="Audit an agent skill directory for malicious behavior (v2).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -567,7 +791,6 @@ def main():
     for sd in skill_dirs:
         result = scan_skill(sd)
 
-        # Filter by minimum severity
         result.findings = [
             f for f in result.findings
             if min_sev_order[f.severity.value] <= min_sev_order[args.severity]
