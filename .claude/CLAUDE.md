@@ -13,6 +13,7 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `skill-security-validator` | "audit/validate/check a skill" | Static + semantic security audit of skill directories |
 | `analytic-tradecraft` | Ambiguous or contested analytical questions | Structured intelligence-style reasoning |
 | `alphaxiv-paper-lookup` | arxiv URL or paper ID | Fetch AI-generated paper overviews from alphaxiv.org |
+| `binary-analysis` | "analyze this binary / executable / malware sample" | Static security analysis of ELF, PE, and firmware binaries |
 
 ## Working with Skills
 
