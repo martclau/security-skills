@@ -14,6 +14,7 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `analytic-tradecraft` | Ambiguous or contested analytical questions | Structured intelligence-style reasoning |
 | `alphaxiv-paper-lookup` | arxiv URL or paper ID | Fetch AI-generated paper overviews from alphaxiv.org |
 | `binary-analysis` | "analyze this binary / executable / malware sample" | Static security analysis of ELF, PE, and firmware binaries |
+| `office-analysis` | "analyze this document / suspicious Office file / macro analysis" | Static security analysis of OLE2, OOXML, and RTF documents |
 
 ## Working with Skills
 

@@ -54,6 +54,27 @@ Looks up any arxiv paper on alphaxiv.org to get a structured AI-generated overvi
 
 ---
 
+### office-analysis
+
+Performs structured static security analysis of Microsoft Office documents across all three major format families: OLE2 (.doc, .xls, .ppt), OOXML (.docx, .xlsx, .pptx, macro-enabled variants), and RTF.
+
+**Trigger phrases:** "analyze this document", "check this Word file", "suspicious Office file", "macro analysis", "OLE analysis", "RTF analysis", "weaponized document", "phishing attachment"
+
+**How it works:**
+1. Triage — identifies true format (never trusts extension), extracts metadata, decrypts if password-protected
+2. Structural analysis — OLE2 stream enumeration, OOXML `.rels` external reference scanning, RTF object and control word inspection
+3. Macro and code extraction — VBA (olevba), XLM/Excel 4.0 (xlmdeobfuscator), DDE fields (msodde), p-code for VBA-stomped documents (pcodedmp)
+4. Deobfuscation — ViperMonkey VBA emulation, Base64/Chr()/XOR decoding, manual string tracing
+5. IOC extraction — URLs, C2 indicators, dropped paths, registry keys, shellcode references
+6. Optional VirusTotal hash lookup (requires `VT_API_KEY`)
+7. Synthesizes findings into a structured report with MITRE ATT&CK mapping and a clear verdict (CLEAN / LOW / MEDIUM / HIGH RISK / MALICIOUS)
+
+**Detected threats:** VBA macros, XLM macros, DDE fields, Equation Editor exploits (CVE-2017-11882), template injection (CVE-2017-0199, Follina/CVE-2022-30190), VBA stomping, RTF shellcode, embedded PE executables, OOXML external link abuse
+
+**Location:** `.claude/skills/office-analysis/`
+
+---
+
 ### binary-analysis
 
 Performs a structured static security analysis of ELF, PE (Windows), and Mach-O binaries. Checks security mitigations, extracts suspicious strings and imports, runs behavioral heuristics, and optionally looks up the hash on VirusTotal.
@@ -92,8 +113,16 @@ security-skills/
         │       └── output-template.md
         ├── alphaxiv-paper-lookup/
         │   └── SKILL.md
-        └── binary-analysis/
+        ├── binary-analysis/
+        │   ├── SKILL.md
+        │   ├── scripts/
+        │   │   └── binary_analyzer.py
+        │   └── references/
+        │       └── mitre-attck-binary.md
+        └── office-analysis/
             ├── SKILL.md
+            ├── scripts/
+            │   └── office_analyzer.py
             └── references/
-                └── mitre-attck-binary.md
+                └── mitre-attck-office.md
 ```
