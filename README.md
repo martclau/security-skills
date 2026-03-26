@@ -54,6 +54,25 @@ Looks up any arxiv paper on alphaxiv.org to get a structured AI-generated overvi
 
 ---
 
+### binary-analysis
+
+Performs a structured static security analysis of ELF, PE (Windows), and Mach-O binaries. Checks security mitigations, extracts suspicious strings and imports, runs behavioral heuristics, and optionally looks up the hash on VirusTotal.
+
+**Trigger phrases:** "analyze this binary", "check this executable", "suspicious binary", "reverse engineer", "malware sample", "ELF/PE/Mach-O analysis", "what does this binary do"
+
+**How it works:**
+1. Identifies file type, architecture, and format
+2. Extracts strings and scans for suspicious patterns (URLs, C2 indicators, credential patterns)
+3. Analyzes ELF/PE headers, imports, exports, and section entropy
+4. Checks compiler security mitigations (NX, PIE, stack canary, RELRO, ASLR, DEP, CFG)
+5. Runs behavioral heuristics across MITRE ATT&CK-aligned categories (persistence, C2, anti-analysis, etc.)
+6. Optional VirusTotal hash lookup (requires `VT_API_KEY`)
+7. Synthesizes findings into a structured report with a clear verdict (CLEAN / LOW / MEDIUM / HIGH RISK / MALICIOUS)
+
+**Location:** `.claude/skills/binary-analysis/`
+
+---
+
 ## Directory Structure
 
 ```
@@ -71,6 +90,10 @@ security-skills/
         │   └── references/
         │       ├── book-synthesis.md
         │       └── output-template.md
-        └── alphaxiv-paper-lookup/
-            └── SKILL.md
+        ├── alphaxiv-paper-lookup/
+        │   └── SKILL.md
+        └── binary-analysis/
+            ├── SKILL.md
+            └── references/
+                └── mitre-attck-binary.md
 ```
