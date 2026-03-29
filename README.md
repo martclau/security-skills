@@ -89,6 +89,25 @@ Performs a structured static security analysis of ELF, PE (Windows), and Mach-O 
 
 **Location:** `.claude/skills/binary-analysis/`
 
+### find-vulns
+
+Scans source code files for security vulnerabilities, ranks them by severity, and produces a structured report with CWE IDs, root causes, proof-of-concept triggers, and suggested fixes.
+
+**Trigger phrases:** "find vulnerabilities", "audit code for security", "do a security review", "check for buffer overflows", "CTF challenge", "pen-test this source", uploading a C/C++/Rust/Go/Python/JS file and asking for a security review.
+
+**How it works:**
+
+1. Identifies target file(s) and builds a mental model of trust boundaries and data flow
+2. Hunts systematically across vulnerability categories: memory safety, integer issues, input validation, logic/design flaws, concurrency bugs, and language-specific issues
+3. Ranks each finding CRITICAL / HIGH / MEDIUM / LOW
+4. Produces a structured report per finding: type, CWE ID, function/line, root cause, exploit trigger, and fix
+5. Ends with a summary table sorted by severity
+6. Saves the report to a requested path or `vuln-report-<filename>.txt`
+
+**Bundled CLI script:** `scripts/find-vulns.sh <source-file> [output-file]` — runs the skill headless via the Claude Code CLI with pre-approved tools and streaming progress output.
+
+**Location:** `.claude/skills/find-vulns/`
+
 ### decompile-binaryninja
 
 Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), writing one `.c` file per function under `<binary>.dec/`.
@@ -157,6 +176,10 @@ security-skills/
         │   │   └── office_analyzer.py
         │   └── references/
         │       └── mitre-attck-office.md
+        ├── find-vulns/
+        │   ├── SKILL.md
+        │   └── scripts/
+        │       └── find-vulns.sh
         ├── decompile-binaryninja/
         │   ├── SKILL.md
         │   └── scripts/
