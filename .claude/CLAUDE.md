@@ -8,13 +8,15 @@ This repository contains Claude Code skills focused on security analysis, intell
 
 ## Skills in This Repo
 
-| Skill | Trigger | Purpose |
-|---|---|---|
-| `skill-security-validator` | "audit/validate/check a skill" | Static + semantic security audit of skill directories |
-| `analytic-tradecraft` | Ambiguous or contested analytical questions | Structured intelligence-style reasoning |
-| `alphaxiv-paper-lookup` | arxiv URL or paper ID | Fetch AI-generated paper overviews from alphaxiv.org |
-| `binary-analysis` | "analyze this binary / executable / malware sample" | Static security analysis of ELF, PE, and firmware binaries |
-| `office-analysis` | "analyze this document / suspicious Office file / macro analysis" | Static security analysis of OLE2, OOXML, and RTF documents |
+| Skill                      | Trigger                                                           | Purpose                                                            |
+| -------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `skill-security-validator` | "audit/validate/check a skill"                                    | Static + semantic security audit of skill directories              |
+| `analytic-tradecraft`      | Ambiguous or contested analytical questions                       | Structured intelligence-style reasoning                            |
+| `alphaxiv-paper-lookup`    | arxiv URL or paper ID                                             | Fetch AI-generated paper overviews from alphaxiv.org               |
+| `binary-analysis`          | "analyze this binary / executable / malware sample"               | Static security analysis of ELF, PE, and firmware binaries         |
+| `office-analysis`          | "analyze this document / suspicious Office file / macro analysis" | Static security analysis of OLE2, OOXML, and RTF documents         |
+| `decompile-binaryninja`    | "decompile with BN / Binary Ninja"                                | Headless Binary Ninja HLIL decompilation, one .c file per function |
+| `decompile-idapro`         | "decompile with IDA / IDA Pro"                                    | Headless IDA Pro Hex-Rays decompilation, one .c file per function  |
 
 ## Working with Skills
 
