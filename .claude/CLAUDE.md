@@ -16,6 +16,7 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `binary-analysis`          | "analyze this binary / executable / malware sample"               | Static security analysis of ELF, PE, and firmware binaries         |
 | `office-analysis`          | "analyze this document / suspicious Office file / macro analysis" | Static security analysis of OLE2, OOXML, and RTF documents         |
 | `find-vulns`               | "find vulnerabilities / audit code / security review"             | Severity-ranked vulnerability report with CWE IDs and PoC triggers |
+| `validate-vuln`            | "validate/triage vuln report / is this exploitable?"              | Verify exploitability of inbound vuln reports via call-graph analysis |
 | `decompile-binaryninja`    | "decompile with BN / Binary Ninja"                                | Headless Binary Ninja HLIL decompilation, one .c file per function |
 | `decompile-idapro`         | "decompile with IDA / IDA Pro"                                    | Headless IDA Pro Hex-Rays decompilation, one .c file per function  |
 

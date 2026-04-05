@@ -108,6 +108,26 @@ Scans source code files for security vulnerabilities, ranks them by severity, an
 
 **Location:** `.claude/skills/find-vulns/`
 
+### validate-vuln
+
+Validates inbound vulnerability reports by verifying whether each finding is actually exploitable. Complements `find-vulns` — use `find-vulns` to generate a report, then `validate-vuln` to triage one.
+
+**Trigger phrases:** "validate this vuln report", "is this exploitable?", "triage this report", "verify these findings", providing a `*.vuln.md` file for review.
+
+**How it works:**
+
+1. Reads the vulnerability report and extracts each finding's claimed type, severity, function, and trigger
+2. Reads all referenced source files and builds a mental model of trust boundaries and data flow
+3. Applies a three-gate test to each finding:
+   - **Gate 1 — Is the bug real?** Confirms the code pattern exists and the report read types/APIs correctly
+   - **Gate 2 — Is it attacker-reachable?** Traces the call graph from untrusted input to the vulnerable code, checking for intervening HMAC, encryption, auth, or bounds checks
+   - **Gate 3 — Is the impact real?** Assesses whether triggering the bug yields meaningful security impact or is purely theoretical
+4. Assigns each finding a verdict: CONFIRMED EXPLOITABLE, CONFIRMED BUG NOT EXPLOITABLE, FALSE POSITIVE, or INSUFFICIENT EVIDENCE
+5. Assesses overall report quality (severity calibration, missed findings, call-graph analysis depth)
+6. Saves the validation report alongside the original
+
+**Location:** `.claude/skills/validate-vuln/`
+
 ### decompile-binaryninja
 
 Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), writing one `.c` file per function under `<binary>.dec/`.
@@ -180,6 +200,8 @@ security-skills/
         │   ├── SKILL.md
         │   └── scripts/
         │       └── find-vulns.sh
+        ├── validate-vuln/
+        │   └── SKILL.md
         ├── decompile-binaryninja/
         │   ├── SKILL.md
         │   └── scripts/
