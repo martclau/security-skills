@@ -17,7 +17,7 @@ Audits agent skill directories for security issues: malicious code, data exfiltr
 3. Semantic analysis of `SKILL.md` for prompt injection and subtle manipulation
 4. Synthesis into a structured report with a clear verdict (SAFE / REVIEW RECOMMENDED / DO NOT INSTALL)
 
-**Location:** `.claude/skills/skill-security-validator/`
+**Location:** `skills/skill-security-validator/`
 
 ### analytic-tradecraft
 
@@ -35,7 +35,7 @@ Improves analytical reasoning using structured intelligence tradecraft for ambig
 - Checks for cognitive bias and alternative perspectives
 - Produces a structured assessment with bottom line, confidence, and signposts
 
-**Location:** `.claude/skills/analytic-tradecraft/`
+**Location:** `skills/analytic-tradecraft/`
 
 ### alphaxiv-paper-lookup
 
@@ -49,7 +49,7 @@ Looks up any arxiv paper on alphaxiv.org to get a structured AI-generated overvi
 2. Fetches the machine-readable report from `alphaxiv.org/overview/{ID}.md`
 3. Falls back to full paper text at `alphaxiv.org/abs/{ID}.md` if more detail is needed
 
-**Location:** `.claude/skills/alphaxiv-paper-lookup/`
+**Location:** `skills/alphaxiv-paper-lookup/`
 
 ### office-analysis
 
@@ -69,7 +69,7 @@ Performs structured static security analysis of Microsoft Office documents acros
 
 **Detected threats:** VBA macros, XLM macros, DDE fields, Equation Editor exploits (CVE-2017-11882), template injection (CVE-2017-0199, Follina/CVE-2022-30190), VBA stomping, RTF shellcode, embedded PE executables, OOXML external link abuse
 
-**Location:** `.claude/skills/office-analysis/`
+**Location:** `skills/office-analysis/`
 
 ### binary-analysis
 
@@ -87,7 +87,7 @@ Performs a structured static security analysis of ELF, PE (Windows), and Mach-O 
 6. Optional VirusTotal hash lookup (requires `VT_API_KEY`)
 7. Synthesizes findings into a structured report with a clear verdict (CLEAN / LOW / MEDIUM / HIGH RISK / MALICIOUS)
 
-**Location:** `.claude/skills/binary-analysis/`
+**Location:** `skills/binary-analysis/`
 
 ### find-vulns
 
@@ -106,7 +106,7 @@ Scans source code files for security vulnerabilities, ranks them by severity, an
 
 **Bundled CLI script:** `scripts/find-vulns.sh <source-file> [output-file]` — runs the skill headless via the Claude Code CLI with pre-approved tools and streaming progress output.
 
-**Location:** `.claude/skills/find-vulns/`
+**Location:** `skills/find-vulns/`
 
 ### validate-vuln
 
@@ -126,7 +126,24 @@ Validates inbound vulnerability reports by verifying whether each finding is act
 5. Assesses overall report quality (severity calibration, missed findings, call-graph analysis depth)
 6. Saves the validation report alongside the original
 
-**Location:** `.claude/skills/validate-vuln/`
+**Location:** `skills/validate-vuln/`
+
+### c-build-test-review
+
+Reviews a C/C++ project's build configuration, compiler flags, assertion discipline, testing infrastructure, and analysis tooling against modern best practices, then produces an actionable, severity-ranked review (not a rewrite).
+
+**Trigger phrases:** "are my GCC flags any good", "is this build secure", "harden this build", "what's missing from my C testing", "should I be using sanitizers", "review my Makefile/CMakeLists.txt", "how are `assert`/`static_assert` used here".
+
+**How it works:**
+
+1. Inventories the build system, compiler(s), language standard, configured phases, test framework, analyzers/sanitizers, and assertion usage
+2. Evaluates four axes — compiler-flag hygiene, assertion discipline, testing infrastructure, analysis tooling — against each SDLC phase (build / debug / test / PGO / release), since a correct setting for one phase is wrong for another
+3. Surfaces phase-mismatch hazards explicitly (e.g. `_FORTIFY_SOURCE` with `-O0`, `NDEBUG` in the test build, sanitizers left on in release)
+4. Produces a structured review with findings categorized critical / important / nice-to-have, each justified and with a concrete replacement, plus a phase-by-phase recommended flag set
+
+**Reference:** `references/worked-example.md` — a complete worked review of a small Makefile project, used to calibrate severity tiering and tone.
+
+**Location:** `skills/c-build-test-review/`
 
 ### decompile-binaryninja
 
@@ -144,7 +161,7 @@ Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), 
 
 **Requirements:** Binary Ninja Commercial or above (headless requires a commercial license). Install path defaults to `~/Downloads/binaryninja/`; override with `BN_DIR`.
 
-**Location:** `.claude/skills/decompile-binaryninja/`
+**Location:** `skills/decompile-binaryninja/`
 
 ### decompile-idapro
 
@@ -163,51 +180,62 @@ Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decomp
 
 **Requirements:** IDA Pro 9.x with a valid Hex-Rays decompiler license. Install path defaults to `~/.local/share/applications/IDA Professional 9.3/`.
 
-**Location:** `.claude/skills/decompile-idapro/`
+**Location:** `skills/decompile-idapro/`
 
 ## Directory Structure
 
 ```
 security-skills/
 ├── README.md
-└── .claude/
-    └── skills/
-        ├── skill-security-validator/
-        │   ├── SKILL.md
-        │   └── scripts/
-        │       ├── skill_validator.py
-        │       └── vt_scan.py
-        ├── analytic-tradecraft/
-        │   ├── SKILL.md
-        │   └── references/
-        │       ├── book-synthesis.md
-        │       └── output-template.md
-        ├── alphaxiv-paper-lookup/
-        │   └── SKILL.md
-        ├── binary-analysis/
-        │   ├── SKILL.md
-        │   ├── scripts/
-        │   │   └── binary_analyzer.py
-        │   └── references/
-        │       └── mitre-attck-binary.md
-        ├── office-analysis/
-        │   ├── SKILL.md
-        │   ├── scripts/
-        │   │   └── office_analyzer.py
-        │   └── references/
-        │       └── mitre-attck-office.md
-        ├── find-vulns/
-        │   ├── SKILL.md
-        │   └── scripts/
-        │       └── find-vulns.sh
-        ├── validate-vuln/
-        │   └── SKILL.md
-        ├── decompile-binaryninja/
-        │   ├── SKILL.md
-        │   └── scripts/
-        │       └── decompile.py
-        └── decompile-idapro/
-            ├── SKILL.md
-            └── scripts/
-                └── decompile.py
+├── .claude/
+│   └── CLAUDE.md
+├── docs/
+│   └── finding-vulnerabilities-with-claude.md
+├── code/                                  # worked examples for the vuln skills
+│   ├── openssl-3.6.1/
+│   ├── openssl-3.6.1.tar.gz
+│   └── vuln-report-ssl_asn1.txt
+└── skills/
+    ├── skill-security-validator/
+    │   ├── SKILL.md
+    │   └── scripts/
+    │       ├── skill_validator.py
+    │       └── vt_scan.py
+    ├── analytic-tradecraft/
+    │   ├── SKILL.md
+    │   └── references/
+    │       ├── book-synthesis.md
+    │       └── output-template.md
+    ├── alphaxiv-paper-lookup/
+    │   └── SKILL.md
+    ├── binary-analysis/
+    │   ├── SKILL.md
+    │   ├── scripts/
+    │   │   └── binary_analyzer.py
+    │   └── references/
+    │       └── mitre-attck-binary.md
+    ├── office-analysis/
+    │   ├── SKILL.md
+    │   ├── scripts/
+    │   │   └── office_analyzer.py
+    │   └── references/
+    │       └── mitre-attck-office.md
+    ├── find-vulns/
+    │   ├── SKILL.md
+    │   └── scripts/
+    │       └── find-vulns.sh
+    ├── validate-vuln/
+    │   └── SKILL.md
+    ├── c-build-test-review/
+    │   ├── SKILL.md
+    │   └── references/
+    │       └── worked-example.md
+    ├── decompile-binaryninja/
+    │   ├── SKILL.md
+    │   └── scripts/
+    │       └── decompile.py
+    └── decompile-idapro/
+        ├── SKILL.md
+        └── scripts/
+            └── decompile.py
 ```
