@@ -20,6 +20,7 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `c-build-test-review`      | "review my GCC flags / harden this build / sanitizers"            | Audit C/C++ build, compiler-flag, assertion, and test configuration |
 | `decompile-binaryninja`    | "decompile with BN / Binary Ninja"                                | Headless Binary Ninja HLIL decompilation, one .c file per function |
 | `decompile-idapro`         | "decompile with IDA / IDA Pro"                                    | Headless IDA Pro Hex-Rays decompilation, one .c file per function  |
+| `android-masvs`            | "audit APK / Android security review / MASVS / OWASP mobile"     | MASVS v2.0 static assessment with MASWE/MASTG references           |
 
 ## Skill Anatomy
 

@@ -163,6 +163,23 @@ Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), 
 
 **Location:** `skills/decompile-binaryninja/`
 
+### android-masvs
+
+Assesses an Android application against the OWASP Mobile Application Security Verification Standard (MASVS v2.0) and produces a structured findings report with MASVS controls, MASWE weaknesses, MASTG test IDs, severity ratings, and remediation guidance.
+
+**Trigger phrases:** "audit an APK", "review an Android app for security", "run MASVS checks", "MAS assessment", "OWASP mobile audit", "check an Android app for vulnerabilities", uploading a `.apk`, `.aab`, `.xapk`, or Android project and asking for a security review.
+
+**How it works:**
+
+1. Identifies the target artifact (APK, AAB, XAPK, or Android project tree)
+2. Unpacks and inventories contents using `apktool` and `jadx`: manifest, resources, smali, decompiled Java/Kotlin, native libraries, certificates
+3. Checks all eight MASVS v2.0 control families: Storage, Cryptography, Authentication, Network, Platform, Code, Resilience, Privacy
+4. Flags findings with MASVS control ID, MASWE weakness ID, MASTG test ID, severity, and remediation guidance
+5. Notes dynamic checks that require a live device (Frida, traffic interception) rather than faking results
+6. Produces a structured report with an executive summary, per-finding detail, and a severity summary table
+
+**Location:** `android-masvs/`
+
 ### decompile-idapro
 
 Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decompiler, writing one `.c` file per non-thunk function under `<binary>.dec/`.
@@ -195,6 +212,20 @@ security-skills/
 │   ├── openssl-3.6.1/
 │   ├── openssl-3.6.1.tar.gz
 │   └── vuln-report-ssl_asn1.txt
+├── android-masvs/
+│   ├── SKILL.md
+│   ├── scripts/
+│   │   └── unpack_apk.sh
+│   └── references/
+│       ├── masvs-storage.md
+│       ├── masvs-crypto.md
+│       ├── masvs-auth.md
+│       ├── masvs-network.md
+│       ├── masvs-platform.md
+│       ├── masvs-code.md
+│       ├── masvs-resilience.md
+│       ├── masvs-privacy.md
+│       └── tools-setup.md
 └── skills/
     ├── skill-security-validator/
     │   ├── SKILL.md
