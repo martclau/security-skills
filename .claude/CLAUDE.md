@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This repository contains Claude Code skills focused on security analysis, intelligence tradecraft, and research workflows. Skills live under `skills/` at the repo root. `code/` holds worked examples used by the vuln skills (e.g. `openssl-3.6.1`); `docs/` holds longer-form writeups (e.g. `finding-vulnerabilities-with-claude.md`).
+This repository contains Claude Code skills focused on security analysis, intelligence tradecraft, and research workflows. Skills live under `skills/` at the repo root. `docs/` holds longer-form writeups (e.g. `finding-vulnerabilities-with-claude.md`).
 
 ## Skills in This Repo
 
@@ -21,14 +21,19 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `decompile-binaryninja`    | "decompile with BN / Binary Ninja"                                | Headless Binary Ninja HLIL decompilation, one .c file per function |
 | `decompile-idapro`         | "decompile with IDA / IDA Pro"                                    | Headless IDA Pro Hex-Rays decompilation, one .c file per function  |
 | `android-masvs`            | "audit APK / Android security review / MASVS / OWASP mobile"     | MASVS v2.0 static assessment with MASWE/MASTG references           |
+| `elf-expert`               | ELF headers, sections, symbols, hardening; readelf/objdump/patchelf | Expertise for inspecting, analyzing, and modifying ELF binaries  |
+| `dwarf-expert`             | DWARF debug info, DIEs, .debug_* sections, dwarfdump, split DWARF | Expertise for analyzing/parsing/creating DWARF (v3/v4/v5)         |
+| `macho-expert`             | Mach-O headers, load commands, code signing, fat binaries; otool/lipo/codesign | Expertise for inspecting/analyzing/modifying Mach-O binaries |
+| `yara-rule-authoring-review` | "write/review/harden a YARA rule", convert IOCs to a signature | Author/review import-free YARA rules under a strict house style    |
 
 ## Skill Anatomy
 
 Skills in this repo follow a shared layout. Knowing where to look saves a lot of time when editing one:
 
 - `SKILL.md` — Claude-facing prose. Frontmatter (`name`, `description`) drives trigger matching; the body is the procedure Claude follows.
-- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, and `skill-security-validator`; a shell driver for `find-vulns`; headless-decompiler drivers for the two `decompile-*` skills.
-- `references/` — material loaded on-demand for deeper context (MITRE ATT&CK mappings, output templates, worked examples). Not loaded by default.
+- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, `skill-security-validator`, and `macho-expert` (`macho_triage.py`); a shell driver for `find-vulns`; headless-decompiler drivers for the two `decompile-*` skills.
+- `references/` (or `reference/`) — material loaded on-demand for deeper context (MITRE ATT&CK mappings, output templates, format/standard deep-dives, tool cheat sheets, worked examples). Not loaded by default. The "expert" skills (`elf-expert`, `dwarf-expert`, `macho-expert`) are reference-heavy: a thin `SKILL.md` plus several reference files covering format internals, coding patterns, and tooling.
+- `assets/` — copy-ready templates Claude emits or fills in (e.g. `yara-rule-authoring-review/assets/rule_template.yar`).
 
 Several skills emit structured reports with explicit verdicts (`CLEAN / LOW / MEDIUM / HIGH RISK / MALICIOUS`, `SAFE / REVIEW RECOMMENDED / DO NOT INSTALL`, or `CONFIRMED EXPLOITABLE / FALSE POSITIVE / …`) and, where relevant, MITRE ATT&CK mapping. Preserve those verdict vocabularies when editing — downstream readers (and the README) depend on them.
 

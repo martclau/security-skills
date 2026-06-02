@@ -89,6 +89,67 @@ Performs a structured static security analysis of ELF, PE (Windows), and Mach-O 
 
 **Location:** `skills/binary-analysis/`
 
+### elf-expert
+
+Provides deep expertise for inspecting, analyzing, and modifying ELF binaries and reasoning about the ELF format/ABI — a reference-heavy skill rather than a one-shot analyzer.
+
+**Trigger phrases:** examining ELF headers/sections/segments/symbols/relocations/dynamic data, assessing hardening (NX, RELRO, PIE, canaries, FORTIFY, RPATH), using `readelf`/`objdump`/`nm`, modifying ELF files (`strip`, `objcopy`, `patchelf`), or writing/reviewing code that parses ELF.
+
+**How it works:**
+
+- Routes to the lightest tool for the job (`file` → `readelf` → `objdump`), escalating only as needed
+- Treats `/usr/include/elf.h`, the System V gABI, per-architecture psABI supplements, and LLVM as ground truth over recall
+- Carries a `checksec`-style hardening table derived from static ELF data
+- Bundles reference files on format internals, `readelf`, `objdump`, modification workflows, and parser/library coding (pyelftools, LIEF, libelf, goblin)
+
+**Location:** `skills/elf-expert/`
+
+### dwarf-expert
+
+Provides deep expertise for analyzing, parsing, creating, and reasoning about DWARF debug information and the DWARF standard (v3, v4, v5).
+
+**Trigger phrases:** inspecting or extracting DWARF from a binary (`.debug_info`, `.debug_line`, `.debug_abbrev`, …), decoding DIEs/tags/attributes/forms, mapping addresses to source lines, interpreting DWARF expressions and location/range lists, split DWARF (`.dwo`/`.dwp`), using `dwarfdump`/`llvm-dwarfdump`/`readelf`, or writing/reviewing code that parses DWARF.
+
+**How it works:**
+
+- Leads with a core mental model (DIE tree → tags/attributes/forms; `.debug_abbrev` parsed before `.debug_info`)
+- Treats the official DWARF standard, LLVM's `DebugInfo/DWARF`, libdwarf, and pyelftools as authoritative; cites which source confirms a fact
+- Covers integrity verification and quality metrics (`llvm-dwarfdump --verify`, `--statistics`)
+- Bundles reference files on the data model, section catalog, DWARF5 changes, line programs/expressions, `dwarfdump`, `readelf`, and parser coding
+
+**Location:** `skills/dwarf-expert/`
+
+### macho-expert
+
+Provides deep expertise for inspecting, analyzing, and modifying Mach-O binaries — the executable format used by macOS and iOS.
+
+**Trigger phrases:** examining headers, load commands, segments, symbol tables, or code signatures; identifying fat/universal binaries and slices; assessing hardening (PIE, canaries, ARC, encryption, hardened runtime, entitlements); using `otool`/`nm`/`codesign`/`lipo`/`dyld_info`; modifying with `lipo`/`install_name_tool`/`strip`/`vtool`; or "what's in this .dylib", "extract the arm64 slice".
+
+**How it works:**
+
+1. Starts from `file` to detect fat vs. thin (which changes how every later tool is invoked)
+2. Routes across native Apple tools (`otool`, `codesign`), LLVM tools (`llvm-objdump --macho`), GNU binutils, and LIEF depending on what's installed — confirming a tool exists before recommending its invocation
+3. Treats Apple SDK headers, `man` pages, LLVM `BinaryFormat/MachO.h`, and Apple's `dyld`/`cctools` as ground truth
+4. Bundles a `macho_triage.py` script plus reference files on format internals, load commands, tools, and parser coding (LIEF, macholib, goblin)
+
+**Location:** `skills/macho-expert/`
+
+### yara-rule-authoring-review
+
+Authors and reviews high-quality, import-free YARA detection rules that catch malware without drowning in false positives, enforcing a strict, opinionated house style.
+
+**Trigger phrases:** "write/create a YARA rule", "review/audit/harden this rule", "make this tighter", "convert these IOCs/hashes to a signature", "debug false positives", or pasting strings/hashes and asking for "a rule to detect this".
+
+**How it works:**
+
+- Synthesizes Trail of Bits, Stairwell, and Neo23x0 guidance, then layers four non-negotiable house rules on top
+- Requires six meta fields (`author`, `date`, `description`, `hash`, `reference`, `version`) in order on every rule
+- Mandates a header check + filesize guard at the start of every condition to avoid false positives on swap files, memory dumps, and disk images
+- Forbids all module imports — structural and magic-byte checks use raw `uint8/uint16/uint32` reads only
+- Operates in two modes (author vs. review) with a copy-ready rule template and reference files on strings, conditions/performance, testing, a review rubric, and the style guide
+
+**Location:** `skills/yara-rule-authoring-review/`
+
 ### find-vulns
 
 Scans source code files for security vulnerabilities, ranks them by severity, and produces a structured report with CWE IDs, root causes, proof-of-concept triggers, and suggested fixes.
@@ -178,7 +239,7 @@ Assesses an Android application against the OWASP Mobile Application Security Ve
 5. Notes dynamic checks that require a live device (Frida, traffic interception) rather than faking results
 6. Produces a structured report with an executive summary, per-finding detail, and a severity summary table
 
-**Location:** `android-masvs/`
+**Location:** `skills/android-masvs/`
 
 ### decompile-idapro
 
@@ -208,24 +269,6 @@ security-skills/
 │   └── CLAUDE.md
 ├── docs/
 │   └── finding-vulnerabilities-with-claude.md
-├── code/                                  # worked examples for the vuln skills
-│   ├── openssl-3.6.1/
-│   ├── openssl-3.6.1.tar.gz
-│   └── vuln-report-ssl_asn1.txt
-├── android-masvs/
-│   ├── SKILL.md
-│   ├── scripts/
-│   │   └── unpack_apk.sh
-│   └── references/
-│       ├── masvs-storage.md
-│       ├── masvs-crypto.md
-│       ├── masvs-auth.md
-│       ├── masvs-network.md
-│       ├── masvs-platform.md
-│       ├── masvs-code.md
-│       ├── masvs-resilience.md
-│       ├── masvs-privacy.md
-│       └── tools-setup.md
 └── skills/
     ├── skill-security-validator/
     │   ├── SKILL.md
@@ -245,6 +288,43 @@ security-skills/
     │   │   └── binary_analyzer.py
     │   └── references/
     │       └── mitre-attck-binary.md
+    ├── elf-expert/
+    │   ├── SKILL.md
+    │   └── reference/
+    │       ├── coding.md
+    │       ├── format.md
+    │       ├── modification.md
+    │       ├── objdump.md
+    │       └── readelf.md
+    ├── dwarf-expert/
+    │   ├── SKILL.md
+    │   └── reference/
+    │       ├── coding.md
+    │       ├── data-model.md
+    │       ├── dwarf5-changes.md
+    │       ├── dwarfdump.md
+    │       ├── line-and-expressions.md
+    │       ├── readelf.md
+    │       └── sections.md
+    ├── macho-expert/
+    │   ├── SKILL.md
+    │   ├── scripts/
+    │   │   └── macho_triage.py
+    │   └── reference/
+    │       ├── coding.md
+    │       ├── format.md
+    │       ├── load_commands.md
+    │       └── tools.md
+    ├── yara-rule-authoring-review/
+    │   ├── SKILL.md
+    │   ├── assets/
+    │   │   └── rule_template.yar
+    │   └── references/
+    │       ├── conditions-and-performance.md
+    │       ├── review-rubric.md
+    │       ├── strings.md
+    │       ├── style-guide.md
+    │       └── testing.md
     ├── office-analysis/
     │   ├── SKILL.md
     │   ├── scripts/
@@ -261,6 +341,20 @@ security-skills/
     │   ├── SKILL.md
     │   └── references/
     │       └── worked-example.md
+    ├── android-masvs/
+    │   ├── SKILL.md
+    │   ├── scripts/
+    │   │   └── unpack_apk.sh
+    │   └── references/
+    │       ├── masvs-storage.md
+    │       ├── masvs-crypto.md
+    │       ├── masvs-auth.md
+    │       ├── masvs-network.md
+    │       ├── masvs-platform.md
+    │       ├── masvs-code.md
+    │       ├── masvs-resilience.md
+    │       ├── masvs-privacy.md
+    │       └── tools-setup.md
     ├── decompile-binaryninja/
     │   ├── SKILL.md
     │   └── scripts/
