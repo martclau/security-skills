@@ -89,6 +89,26 @@ Performs a structured static security analysis of ELF, PE (Windows), and Mach-O 
 
 **Location:** `skills/binary-analysis/`
 
+### asm-recon
+
+Maps and continuously monitors the external attack surface of domains the user **owns**, emitting a dated JSON snapshot plus a human-readable `REPORT.md` that leads with a diff against the previous run. Defensive and owned-assets-only — it never port-scans, brute-forces credentials or directories, or probes for vulnerabilities.
+
+**Trigger phrases:** "recon on our domain", "what's our external footprint", "attack-surface monitoring", "find our subdomains", "audit our DNS / mail / certs", "check for subdomain takeover", "are our nameservers leaking the zone", "external asset inventory", "what changed in our surface since last week".
+
+**How it works:**
+
+1. **Passive collection** — RDAP registration data, certificate-transparency subdomain discovery (crt.sh + CertSpotter, unioned so one source being down never zeroes out enumeration), and Team Cymru ASN/CIDR enrichment. No packets to the target.
+2. **No-impact active collection** — resolves DNS for discovered hosts, one HTTP(S) GET per host (following redirects to fingerprint the *final* host), one TLS handshake, and reads `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt`, and the favicon.
+3. **Mail posture** — derives SPF/DKIM/DMARC and flags spoofable domains.
+4. **Zone-transfer audit** — attempts AXFR against each authoritative nameserver. This is a configuration audit, not an attack; a successful transfer is a finding.
+5. **Auth-surface detection** — flags exposed login/SSO/VPN/webmail/admin endpoints via URL/redirect paths, body credential forms, HTTP `401`/`WWW-Authenticate` challenges, and vendor fingerprints, risk-tiered (remote-access/admin → MEDIUM, SSO/generic → INFO) with the matching evidence recorded.
+6. **Risk callouts** — HIGH / MEDIUM / LOW / INFO findings (AXFR exposure, dangling-CNAME takeover candidates, email spoofability, expiring/expired TLS, exposed authentication surfaces).
+7. Writes `<YYYY-MM-DD>.json` (the longitudinal record) and a diff-led `REPORT.md`, carrying forward `first_seen` dates across runs.
+
+**Dependencies:** none — pure Python standard library. A bundled stdlib-only DNS client (`scripts/dnsmini.py`) handles record types and AXFR that `socket` can't; an optional `CERTSPOTTER_TOKEN` lifts certificate-transparency rate limits.
+
+**Location:** `skills/asm-recon/`
+
 ### elf-expert
 
 Provides deep expertise for inspecting, analyzing, and modifying ELF binaries and reasoning about the ELF format/ABI — a reference-heavy skill rather than a one-shot analyzer.
@@ -288,6 +308,11 @@ security-skills/
     │   │   └── binary_analyzer.py
     │   └── references/
     │       └── mitre-attck-binary.md
+    ├── asm-recon/
+    │   ├── SKILL.md
+    │   └── scripts/
+    │       ├── recon.py
+    │       └── dnsmini.py
     ├── elf-expert/
     │   ├── SKILL.md
     │   └── reference/

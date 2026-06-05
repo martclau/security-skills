@@ -1,1 +1,8 @@
 code/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# asm-recon scan output (never commit collected data)
+asm-output/

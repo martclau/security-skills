@@ -25,13 +25,14 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `dwarf-expert`             | DWARF debug info, DIEs, .debug_* sections, dwarfdump, split DWARF | Expertise for analyzing/parsing/creating DWARF (v3/v4/v5)         |
 | `macho-expert`             | Mach-O headers, load commands, code signing, fat binaries; otool/lipo/codesign | Expertise for inspecting/analyzing/modifying Mach-O binaries |
 | `yara-rule-authoring-review` | "write/review/harden a YARA rule", convert IOCs to a signature | Author/review import-free YARA rules under a strict house style    |
+| `asm-recon`                | "recon/monitor our external attack surface", "find our subdomains", "audit our DNS/mail/certs", "is our zone leaking" | Passive + no-impact-active attack-surface monitoring of OWNED domains; dated JSON + diff-led REPORT.md |
 
 ## Skill Anatomy
 
 Skills in this repo follow a shared layout. Knowing where to look saves a lot of time when editing one:
 
 - `SKILL.md` — Claude-facing prose. Frontmatter (`name`, `description`) drives trigger matching; the body is the procedure Claude follows.
-- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, `skill-security-validator`, and `macho-expert` (`macho_triage.py`); a shell driver for `find-vulns`; headless-decompiler drivers for the two `decompile-*` skills.
+- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, `skill-security-validator`, and `macho-expert` (`macho_triage.py`); a shell driver for `find-vulns`; headless-decompiler drivers for the two `decompile-*` skills; and the `asm-recon` collector (`recon.py` plus a bundled stdlib-only DNS client `dnsmini.py` — the skill is deliberately pure-stdlib, no pip packages).
 - `references/` (or `reference/`) — material loaded on-demand for deeper context (MITRE ATT&CK mappings, output templates, format/standard deep-dives, tool cheat sheets, worked examples). Not loaded by default. The "expert" skills (`elf-expert`, `dwarf-expert`, `macho-expert`) are reference-heavy: a thin `SKILL.md` plus several reference files covering format internals, coding patterns, and tooling.
 - `assets/` — copy-ready templates Claude emits or fills in (e.g. `yara-rule-authoring-review/assets/rule_template.yar`).
 
