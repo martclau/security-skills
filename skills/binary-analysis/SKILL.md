@@ -16,7 +16,7 @@ techniques, security-feature checks, and behavioral indicator review.
 It works in five phases:
 
 1. **Identification** -- determine file type, architecture, and format.
-2. **Static analysis** -- strings, imports/exports, symbols, sections, entropy.
+2. **Static analysis** -- strings, imports/exports, symbols, sections, entropy, packing check.
 3. **Security features check** -- compiler mitigations (NX, ASLR, PIE, canaries, RELRO, etc.).
 4. **Behavioral indicators** -- suspicious strings, known-bad patterns, YARA-style heuristics.
 5. **Synthesis** -- verdict, risk summary, and recommended next steps.
@@ -160,14 +160,39 @@ Interesting PE imports to flag:
 - `InternetOpen` / `HttpSendRequest` -- HTTP communication
 - `ShellExecute` / `WinExec` -- command execution
 
-### 2d. Entropy analysis
+### 2d. Entropy & packing assessment
 
 High entropy (> 7.0) in a section often indicates packing, encryption, or compression.
-Run the bundled script for per-section entropy:
+Run the bundled script for per-section entropy (works for both ELF and PE):
 
 ```bash
 python3 <skill-path>/scripts/binary_analyzer.py --entropy "$WORK_DIR/target"
 ```
+
+The `--entropy` run **always** prints a packing assessment alongside the entropy table — a
+verdict, the indicators behind it, and an unpack recommendation. This matters because a
+packed binary exposes only its unpacking stub to static analysis, so you must know whether
+the strings/imports you collected in 2a–2c can be trusted at all.
+
+The verdict combines three signals:
+- **UPX & packer fingerprints** — `UPX!` magic and packer section names (UPX, ASPack,
+  MPRESS, Themida/VMProtect, …). The name list is best-effort: protectors often strip or
+  randomize section names, so a *negative* here does not mean "not packed."
+- **Structural tells** (the strongest unknown-packer signal) — an executable section whose
+  virtual size is large but raw on-disk size is 0 or disproportionately small, i.e. the
+  real code only materializes in memory at runtime. This check is PE-only; non-UPX ELF
+  packers are caught mainly via entropy (UPX itself is caught by the `UPX!` magic on ELF).
+- **Per-section entropy** — an executable section with entropy ≥ 7.2 (compressed/encrypted
+  code). Gated on the *executable* flag, so high-entropy data (resources, `.bss`) does not
+  cause false positives.
+
+If it reports **UPX**, unpack statically and re-run the whole analysis:
+
+```bash
+upx -d "$WORK_DIR/target" -o "$WORK_DIR/target.unpacked"   # lossless; does not execute
+```
+
+For non-UPX packers, unpack in an instrumented sandbox / dump from memory first.
 
 ---
 
@@ -310,9 +335,10 @@ Be transparent about these in every report:
 1. **Static analysis only** -- this skill does not execute the binary. Dynamic behaviors
    (runtime decryption, network calls, anti-analysis checks) will not be observed.
 2. **Packed or encrypted binaries** -- if the binary is packed, most strings and imports will
-   be inside the unpacked payload, invisible to static analysis. Entropy > 7.2 on the main
-   code section is a strong indicator. Recommend unpacking (UPX -d for UPX; sandbox for custom
-   packers) before re-analysis.
+   be inside the unpacked payload, invisible to static analysis. The entropy run (Step 2d)
+   always emits a packing verdict; if it reports packing, unpack (`upx -d` for UPX,
+   sandbox/memory dump for custom packers) and re-run the whole analysis before trusting any
+   other findings.
 3. **Architecture support** -- `strings`, `readelf`, and `objdump` work on most ELF targets.
    Full PE analysis requires `pefile` (Python) or a Windows analysis environment.
 4. **No taint tracking** -- the script cannot trace how data flows between functions. A

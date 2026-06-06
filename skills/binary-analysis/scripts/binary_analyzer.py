@@ -3,7 +3,9 @@
 binary_analyzer.py -- Static binary security analysis tool.
 
 Modes:
-  --entropy     Compute per-section Shannon entropy (ELF/PE).
+  --entropy     Compute per-section Shannon entropy (ELF/PE) and always emit a
+                packing assessment (UPX & packer fingerprints, structural tells,
+                per-section entropy) with a verdict and unpack recommendation.
   --checksec    Check ELF security mitigations (fallback when checksec is not installed).
   --pe-security Check PE security mitigations.
   --heuristics  Scan strings and binary for behavioral indicators.
@@ -95,12 +97,43 @@ def elf_sections(path: str) -> list[dict]:
     return sections
 
 
+def pe_sections(raw: bytes) -> list[dict]:
+    """Parse PE section headers: name, raw file offset/size, virtual size, exec flag."""
+    out: list[dict] = []
+    if len(raw) < 0x40 or raw[:2] != b"MZ":
+        return out
+    try:
+        pe = struct.unpack_from("<I", raw, 0x3C)[0]
+        if raw[pe:pe + 4] != b"PE\x00\x00":
+            return out
+        nsec = struct.unpack_from("<H", raw, pe + 6)[0]
+        opt_size = struct.unpack_from("<H", raw, pe + 20)[0]
+        sect = pe + 24 + opt_size
+        EXEC = 0x20000000 | 0x00000020      # IMAGE_SCN_MEM_EXECUTE | CNT_CODE
+        for i in range(nsec):
+            o = sect + i * 40
+            if o + 40 > len(raw):
+                break
+            name = raw[o:o + 8].rstrip(b"\x00").decode("latin-1", "replace")
+            vsize = struct.unpack_from("<I", raw, o + 8)[0]
+            rsize = struct.unpack_from("<I", raw, o + 16)[0]
+            roff = struct.unpack_from("<I", raw, o + 20)[0]
+            chars = struct.unpack_from("<I", raw, o + 36)[0]
+            out.append({"name": name, "offset": roff, "size": rsize,
+                        "vsize": vsize, "exec": bool(chars & EXEC)})
+    except Exception:
+        pass
+    return out
+
+
 def compute_entropy(binary_path: str) -> list[dict]:
     results = []
     raw = Path(binary_path).read_bytes()
 
-    # Try ELF sections
+    # Try ELF sections, then PE sections (readelf is ELF-only, so PE falls through here)
     sections = elf_sections(binary_path)
+    if not sections:
+        sections = [s for s in pe_sections(raw) if s["size"] > 0]
     if sections:
         for sec in sections:
             chunk = raw[sec["offset"]: sec["offset"] + sec["size"]]
@@ -137,6 +170,136 @@ def print_entropy(results: list[dict]) -> None:
             f"{r['section']:<20} {r['size']:>10}  "
             f"{_c(color, '{:>8.3f}'.format(r['entropy']))}  {r['label']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Packer / packing detection
+# ---------------------------------------------------------------------------
+# Best-effort. Section-name fingerprints are a *bonus* (protectors routinely
+# randomize/strip them, so the name list mostly yields false negatives). The
+# signals that actually catch unknown/custom packers are the structural tell
+# (executable code absent or disproportionately small on disk) and per-section
+# entropy. UPX is special-cased because it is definitive and reversible.
+
+PACKER_SECTION_SIGS = {
+    "UPX":                ("upx0", "upx1", "upx2"),
+    "ASPack":             (".aspack", ".adata"),
+    "MPRESS":             (".mpress1", ".mpress2"),
+    "Petite":             (".petite",),
+    "PECompact":          ("pec1", "pec2", ".pec"),
+    "FSG":                ("fsg!",),
+    "NsPack":             (".nsp0", ".nsp1", ".nsp2"),
+    "Themida/WinLicense": (".themida", ".winlice"),
+    "VMProtect":          (".vmp0", ".vmp1", ".vmp2"),
+    "Enigma":             (".enigma1", ".enigma2"),
+    "Yoda's Protector":   (".yp", ".y0da"),
+    "kkrunchy":           (".kkrunchy",),
+}
+
+
+def assess_packing(binary_path: str) -> dict:
+    """Heuristic packer/packing assessment from section-name & UPX magic
+    fingerprints, structural tells (executable code missing/tiny on disk), and
+    per-section entropy. Degrades gracefully on non-PE/non-ELF input."""
+    raw = Path(binary_path).read_bytes()
+    indicators: list[dict] = []
+    packer = None
+
+    is_pe = len(raw) >= 0x40 and raw[:2] == b"MZ"
+    secs = pe_sections(raw) if is_pe else []
+    names_lc = [s["name"].lower() for s in secs]
+
+    # 1) Section-name fingerprints (best-effort)
+    for pk, sigs in PACKER_SECTION_SIGS.items():
+        hits = sorted({nm for nm in names_lc if any(nm.startswith(s) for s in sigs)})
+        if hits:
+            packer = packer or pk
+            indicators.append({"severity": "HIGH", "kind": "section-name",
+                               "detail": f"{pk} section name(s): {', '.join(hits)}"})
+
+    # 2) UPX magic (only distinctive 4-byte magic — catches UPX even on ELF / when
+    #    section names are stripped; matches the --heuristics 'UPX!' rule)
+    if b"UPX!" in raw:
+        packer = packer or "UPX"
+        if not any(i["kind"] == "section-name" and i["detail"].startswith("UPX") for i in indicators):
+            indicators.append({"severity": "HIGH", "kind": "magic",
+                               "detail": "UPX magic 'UPX!' present"})
+
+    # 3) Structural tells + per-section entropy (the real unknown-packer signals)
+    sec_entropy = []
+    for s in secs:
+        ent = round(shannon_entropy(raw[s["offset"]:s["offset"] + s["size"]]), 3) \
+            if s["size"] > 0 else None
+        sec_entropy.append({"name": s["name"], "raw_size": s["size"],
+                            "virtual_size": s["vsize"], "exec": s["exec"], "entropy": ent})
+        if not s["exec"]:
+            continue                                    # gate on exec (skip .bss etc.)
+        if s["vsize"] > 0x1000 and s["size"] == 0:
+            indicators.append({"severity": "HIGH", "kind": "structural",
+                               "detail": f"executable section '{s['name']}' has virtual "
+                                         f"size {hex(s['vsize'])} but 0 bytes on disk "
+                                         f"(code materializes in memory at runtime)"})
+        elif s["size"] > 0 and s["vsize"] >= s["size"] * 4 and s["vsize"] > 0x10000:
+            indicators.append({"severity": "HIGH", "kind": "structural",
+                               "detail": f"executable section '{s['name']}' virtual size "
+                                         f"{hex(s['vsize'])} >> raw size {hex(s['size'])} "
+                                         f"(runtime expansion — typical of packers)"})
+        if ent is not None and ent >= 7.2:
+            indicators.append({"severity": "MEDIUM", "kind": "entropy",
+                               "detail": f"executable section '{s['name']}' entropy {ent} "
+                                         f"(>=7.2: compressed/encrypted code)"})
+
+    # 4) Whole-file entropy (and the only structural signal we have for ELF/unknown)
+    whole = round(shannon_entropy(raw), 3)
+    if not secs and whole >= 7.2:
+        indicators.append({"severity": "MEDIUM", "kind": "entropy",
+                           "detail": f"whole-file entropy {whole} (>=7.2: likely "
+                                     f"compressed/encrypted/packed)"})
+
+    # Verdict
+    if packer:
+        if packer == "UPX":
+            verdict = "PACKED with UPX"
+            rec = ("Reverse it statically with `upx -d` (lossless, does NOT execute the "
+                   "sample), then re-run analysis.")
+        else:
+            verdict = f"PACKED with {packer}"
+            rec = ("Strings/imports visible here are mostly the unpacking stub. Unpack by "
+                   "running in an instrumented sandbox and dumping from memory, then "
+                   "re-analyze.")
+    elif any(i["kind"] == "structural" for i in indicators):
+        verdict = "LIKELY PACKED (unknown/custom packer)"
+        rec = ("Executable code is missing or tiny on disk. Unpack via sandbox / memory "
+               "dump before static analysis — what you see now is the stub.")
+    elif any(i["kind"] == "entropy" for i in indicators):
+        verdict = "POSSIBLY PACKED / ENCRYPTED (high entropy)"
+        rec = ("High-entropy code or data — could be packing, encryption, or embedded "
+               "compressed resources. Corroborate with imports and section layout.")
+    else:
+        verdict = "No strong packing indicators"
+        rec = "Entropy and section layout are consistent with a normal compiled binary."
+
+    return {"verdict": verdict, "packer": packer, "recommendation": rec,
+            "format": "PE" if is_pe else ("ELF" if is_elf(raw) else "other"),
+            "whole_file_entropy": whole, "indicators": indicators,
+            "sections": sec_entropy}
+
+
+def print_packed(result: dict) -> None:
+    print(_c("bold", "\n=== Packer / Packing Assessment ==="))
+    v = result["verdict"]
+    vc = "green" if v.startswith("No strong") else ("yellow" if v.startswith("POSSIBLY") else "red")
+    print(f"  Verdict: {_c(vc, v)}   (format: {result['format']}, "
+          f"whole-file entropy: {result['whole_file_entropy']})")
+    if result["indicators"]:
+        print(_c("bold", "  Indicators:"))
+        for i in result["indicators"]:
+            print(f"    {_c(severity_color(i['severity']), i['severity']):<12} "
+                  f"[{i['kind']}] {i['detail']}")
+    else:
+        print(_c("green", "  No packer fingerprints, structural tells, or high-entropy "
+                          "executable sections."))
+    print(f"  {_c('cyan', 'Recommendation:')} {result['recommendation']}")
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +733,9 @@ def main() -> None:
         results = compute_entropy(args.target)
         print_entropy(results)
         output["entropy"] = results
+        packing = assess_packing(args.target)   # always runs with entropy
+        print_packed(packing)
+        output["packed"] = packing
 
     if args.checksec and args.target:
         results = elf_checksec(args.target)
