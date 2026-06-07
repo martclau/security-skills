@@ -56,39 +56,62 @@ The `idapro` Python package lives at `<IDADIR>/idalib/python/` and is automatica
 - Removes stale IDA sidecar files (`.id0`, `.id1`, `.id2`, `.nam`, `.til`) before opening — a previous interrupted run leaves these behind and causes `open_database` to return error code 4 (corrupted DB).
 - Opens the binary with `idapro.open_database(path, run_auto_analysis=True)` and waits for full auto-analysis.
 - Explicitly loads the architecture-appropriate Hex-Rays decompiler plugin (e.g. `hexx64` for x86-64) via `idaapi.load_plugin()` — plugins are not auto-loaded in headless/idalib mode; this must be called before `ida_hexrays.init_hexrays_plugin()`.
-- **Applies FLIRT library signatures on every run**, scoped to the *detected* compiler
-  family (plus the Go stdlib for Go binaries) so matched library functions get real
-  names/prototypes instead of `sub_*`. See "Default vs. aggressive mode" below.
+- **Applies FLIRT library signatures on every run**, from the **architecture-appropriate**
+  `sig/<proc>/` dir (`sig/pc` for x86, `sig/arm` for ARM, `sig/mips`, …) scoped to the
+  *detected* compiler family, plus the Go-stdlib and Rust-std signatures for those runtimes,
+  so matched library functions get real names/prototypes instead of `sub_*`. See "Default vs.
+  aggressive mode" below.
 - Iterates all functions, skips thunks (`FUNC_THUNK`) — unless `--aggressive` is set — decompiles the rest, and writes pseudocode to `<binary>.ida.dec/<funcname>@<ADDRESS>.c`.
 - Prepends a short comment header to each `.c` (function name + address, `thunk`/`lib` flags, and caller/callee counts). The function prototype is already the first line of the pseudocode, so it is not repeated.
-- Writes an **`index.json` manifest** into the output directory: top-level `meta` (tool, IDA version, binary path, sha256, size, arch, file type, function count, whether UPX was auto-unpacked) plus one entry per emitted function (`name`, `address`, `file`, `lines`, `is_thunk`, `is_lib`, `is_imported`, `n_callers`, `n_callees`) — so downstream tools/agents can navigate the output without globbing. Same schema as the `decompile-binaryninja` skill (`is_imported` is always `false` here — IDA exposes no direct per-function import flag; use `is_thunk`/`is_lib`).
+- Writes an **`index.json` manifest** into the output directory: top-level `meta` (tool, IDA version, binary path, sha256, size, arch, file type, function count, whether UPX was auto-unpacked, and `signatures`: the list of FLIRT signature groups applied this run) plus one entry per emitted function (`name`, `address`, `file`, `lines`, `is_thunk`, `is_lib`, `is_imported`, `n_callers`, `n_callees`) — so downstream tools/agents can navigate the output without globbing. Same schema as the `decompile-binaryninja` skill (`is_imported` is always `false` here — IDA exposes no direct per-function import flag; use `is_thunk`/`is_lib`).
 - Treats license errors as fatal; all other decompiler errors are skipped silently.
 - Closes the database without saving (`idapro.close_database(save=False)`).
 
 ## Default vs. aggressive mode (`--aggressive` / `-a` / `DECOMPILE_AGGRESSIVE=1`)
 
-**Default (every run): scoped FLIRT signatures.** FLIRT application is cheap and high-value,
-so it always runs — but scoped to the toolchain IDA detected:
+FLIRT is cheap and high-value, so a **Tier 1** set always runs; `--aggressive` adds an
+expensive **Tier 2** set. A queued-but-unmatched signature costs analysis time, not false
+names (FLIRT needs a pattern+CRC hit) — so coverage is the only thing the tiers trade against
+runtime. Application is **arch-scoped**: bare signature names resolve under the current
+processor's `sig/<proc>/` dir automatically, so the script just discovers names from the
+right dir. Off-path dirs (`sig/rust/<triple>`, `sig/golang/stdlibs`, `sig/linux`,
+`sig/windows`) are applied by absolute path. The applied groups are listed on the console and
+recorded in `index.json` `meta.signatures`.
 
-- The compiler family is read from `inf_get_cc_id()` / `inf_get_filetype()` and mapped to
-  the C-runtime signatures shipped with IDA (`vc*`/`msvc*` for MSVC, `gcc*` — plus
-  `mingw*`/`cygwin*` on PE — for GNU, `bc*` for Borland, …). If the compiler can't be
-  identified, it falls back to the broad CRT set so detection failure never costs names.
+**Tier 1 — every run:**
+
+- **Compiler / format sigs** from the arch-appropriate dir. For x86 (`sig/pc`) the compiler
+  family is read from `inf_get_cc_id()` / `inf_get_filetype()` and mapped to the C-runtime
+  signatures (`vc*`/`msvc*` for MSVC, `gcc*` — plus `mingw*`/`cygwin*` on PE — for GNU, `bc*`
+  for Borland, …; broad CRT fallback when the compiler can't be identified, so detection
+  failure never costs names). The non-x86 dirs (`sig/arm`, `sig/mips`, …) are small and
+  **format-named** (`elf`/`pe`/`mfc`/`android_arm`/…), *not* compiler-prefixed, so all of
+  their few signatures are applied. (Previously only `sig/pc` was consulted, so non-x86
+  targets got *no* signatures.)
 - **Go** binaries (auto-detected via `Go build ID` / `.gopclntab` / `go.buildinfo` /
-  `runtime.main`) additionally get the Go-stdlib signatures (`go_std_abi0`,
-  `go_std_abiinternal`), so functions are named `runtime.*` / `net/http.*` / `main.*`.
-- Scoping (rather than firing every compiler family) avoids spurious cross-compiler
-  matches. FLIRT needs a pattern+CRC hit, so a queued-but-unmatched signature costs
-  analysis time, not false names.
+  `runtime.main`) get the Go-stdlib signatures — `go_std_abi0`/`go_std_abiinternal` on x86,
+  and `golang_std_{arm,arm64}_*` (from `sig/golang/stdlibs`) on ARM — so functions are named
+  `runtime.*` / `net/http.*` / `main.*`.
+- **Rust** binaries (auto-detected via `/rustc/` / `library/std` / `cargo/registry` /
+  `rust_begin_unwind` markers) get IDA's bundled Rust signatures from `sig/rust/<triple>/`
+  (the script maps arch + file type to the target triple, e.g. `aarch64-apple-darwin`). By
+  default it applies the **newest** per-version `rust_*.sig` (the shipped `rust_bundle_*` is
+  metadata-only, no `.sig`; wrong versions simply CRC-miss). This names Rust **std/runtime/
+  crate** code (`core::*`, `alloc::*`, `compiler_builtins`, …) — not the program's own
+  functions — typically resolving several hundred functions on a stripped release binary.
 
-**`--aggressive` adds two higher-cost steps** (trades speed/precision for recall):
+**`--aggressive` adds higher-cost steps** (trades speed/precision for recall):
 
 1. **Max analysis flags + full re-plan** — sets every `AF_*`/`AF2_*` flag and re-plans the
    whole image so IDA chases more code into functions. On well-formed PEs this is marginal;
    it matters for obfuscated / position-independent / sparsely-referenced code, but on
    ordinary binaries it can also turn data into spurious `sub_*` and is slower. FLIRT is
    applied *after* the re-plan so signatures also land on newly-discovered code.
-2. **Include thunks** — does not skip `FUNC_THUNK` functions (default skips them, matching
+2. **Tier-2 signatures** (broad, expensive): **all** Rust versions for the triple (not just
+   the newest); the statically-linked distro package sigs `sig/linux/{debian,ubuntu}/*-<arch>`
+   on ELF targets; and the Windows VS-channel CRT/MFC/ATL/SDK sigs `sig/windows/vs-channels`
+   on PE targets.
+3. **Include thunks** — does not skip `FUNC_THUNK` functions (default skips them, matching
    haruspex; their pseudocode is trivial trampoline code).
 
 Everything here is purely static — nothing is executed. Combine freely with the UPX

@@ -245,14 +245,25 @@ def maybe_unpack(path: str) -> str:
 # FLIRT signatures (applied on every run) + aggressive analysis (opt-in)
 # ---------------------------------------------------------------------------
 # FLIRT library-signature application is cheap and high-value: matched library
-# functions get real names/prototypes instead of `sub_*`. We apply it on EVERY
-# run, but scoped to the *detected* compiler family (plus Go stdlib for Go
-# binaries) to avoid spurious cross-compiler matches. When the compiler can't be
-# identified we fall back to the broad CRT set so detection failure never costs
-# names. Aggressive mode (--aggressive / -a / DECOMPILE_AGGRESSIVE=1) is the
-# opt-in, higher-cost layer: it maxes the analysis flags and re-plans the whole
-# image (recall up, precision down, slower) and stops skipping thunks. None of
-# this executes the target — it is all static analysis.
+# functions get real names/prototypes instead of `sub_*`. A queued-but-unmatched
+# signature only costs analysis time (FLIRT needs a pattern+CRC hit) — it never
+# produces false names — so we apply generously but in two tiers:
+#
+#   Tier 1 (every run, cheap): the compiler/format signatures shipped under the
+#     ARCH-APPROPRIATE <IDADIR>/sig/<proc>/ dir (sig/pc for x86, sig/arm for ARM,
+#     ...), plus the Go-stdlib and Rust-std signatures for those runtimes.
+#   Tier 2 (--aggressive only, expensive): all Rust versions, the statically-
+#     linked distro package sigs (sig/linux/{debian,ubuntu}), and the Windows
+#     VS-channel CRT/MFC/ATL/SDK sigs (sig/windows/vs-channels).
+#
+# Bare-name application (plan_to_apply_idasgn("vc32rtf")) resolves ARCH-SCOPED
+# under sig/<current-proc>/, so Tier-1 compiler sigs are applied by name. The
+# off-path dirs (sig/rust/<triple>, sig/golang/stdlibs, sig/linux, sig/windows)
+# are NOT on that search path and must be applied by ABSOLUTE path.
+#
+# Aggressive mode (--aggressive / -a / DECOMPILE_AGGRESSIVE=1) also maxes the
+# analysis flags and re-plans the whole image (recall up, precision down, slower)
+# and stops skipping thunks. None of this executes the target — all static.
 
 def _is_go(path: str) -> bool:
     try:
@@ -262,6 +273,18 @@ def _is_go(path: str) -> bool:
         return False
     return any(m in data for m in
                (b"Go build ID", b"go.buildinfo", b".gopclntab", b"runtime.main"))
+
+
+def _is_rust(path: str) -> bool:
+    """Detect a Rust binary from compiler-embedded path/runtime markers."""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return False
+    return any(m in data for m in
+               (b"/rustc/", b"library/std", b"cargo/registry",
+                b"rust_begin_unwind", b"RUST_BACKTRACE"))
 
 
 def set_aggressive_analysis() -> None:
@@ -277,11 +300,37 @@ def set_aggressive_analysis() -> None:
 # FLIRT sig name-prefixes shipped under <IDADIR>/sig/pc/, keyed by compiler.
 _BROAD_CRT = ("vc", "msvc", "gcc", "mingw", "cygwin")
 
+# Processor name -> sig/<subdir> that ships its signatures (dirs present in IDA 9.x).
+# Only "pc" is compiler-prefixed; the other dirs are tiny and format-named
+# (elf/pe/mfc/android_arm/...), so we apply them whole. This map is best-effort —
+# the exact inf_get_procname() strings for some families (mips*/sh*/h8/68k) are not
+# all verified; _sig_subdir_for_proc() also tries a same-named sig/<proc> dir before
+# falling back to "pc", so a missing alias degrades to "no arch sigs", never a crash.
+_PROC_TO_SIGDIR = {
+    "metapc": "pc",
+    "arm": "arm", "armb": "arm",
+    "mips": "mips", "mipsl": "mips", "mipsr": "mips", "mipsb": "mips", "mipsrl": "mips",
+    "68000": "mc68k", "68k": "mc68k",
+    "sh3": "sh3", "sh4": "sh3",
+    "h8": "h8", "h8500": "h8",
+    "tms320c6": "tms320c6",
+}
+
+
+def _sig_subdir_for_proc(proc: str) -> str:
+    p = proc.lower()
+    if p in _PROC_TO_SIGDIR:
+        return _PROC_TO_SIGDIR[p]
+    if os.path.isdir(os.path.join(_IDADIR, "sig", p)):   # procname == dir name
+        return p
+    return "pc"
+
 
 def choose_flirt_prefixes() -> tuple:
-    """Pick FLIRT sig name-prefixes scoped to the detected compiler/toolchain.
-    Unknown compiler -> broad CRT fallback, so detection failure never loses
-    names. Call after the database is open (inf_* are valid then)."""
+    """Pick FLIRT sig name-prefixes scoped to the detected compiler/toolchain
+    (sig/pc only — the non-pc arch dirs are not compiler-prefixed). Unknown
+    compiler -> broad CRT fallback, so detection failure never loses names.
+    Call after the database is open (inf_* are valid then)."""
     try:
         comp = ida_ida.inf_get_cc_id()
         is_pe = ida_ida.inf_get_filetype() == ida_ida.f_PE
@@ -299,33 +348,200 @@ def choose_flirt_prefixes() -> tuple:
     return _BROAD_CRT          # COMP_UNK / anything else
 
 
-def apply_flirt_signatures(prefixes: tuple, go: bool) -> int:
-    """Queue the FLIRT signatures shipped under <IDADIR>/sig/pc whose name starts
-    with one of `prefixes` (the detected compiler family), plus the Go-stdlib
-    sigs for Go binaries. Returns how many actually queued; `auto_wait()` applies
-    them. FLIRT needs a pattern+CRC hit, so a queued-but-unmatched sig costs
-    analysis time, not false names."""
-    sig_pc = os.path.join(_IDADIR, "sig", "pc")
-    names = []
-    try:
-        for fn in sorted(os.listdir(sig_pc)):
-            if not fn.endswith(".sig"):
-                continue
-            base, low = fn[:-4], fn[:-4].lower()
-            if low.startswith(tuple(prefixes)):
-                names.append(base)               # detected C runtime family
-            elif go and low.startswith("go_std"):
-                names.append(base)               # Go stdlib (go_std_abi0/abiinternal)
-    except OSError as exc:
-        print(f"[!] could not list FLIRT sigs at {sig_pc}: {exc}", file=sys.stderr)
+def _queue_by_name(names) -> int:
+    """Queue bare-name signatures (resolution is arch-scoped to sig/<proc>/).
+    Returns how many actually queued; auto_wait() applies them."""
     queued = 0
     for n in names:
         try:
-            if ida_funcs.plan_to_apply_idasgn(n):    # returns # of modules; 0 == not found
+            if ida_funcs.plan_to_apply_idasgn(n):    # returns # modules; 0 == not found
                 queued += 1
         except Exception:
             pass
     return queued
+
+
+def _queue_by_path(paths) -> int:
+    """Queue signatures by ABSOLUTE path (for dirs off the sig/<proc> search
+    path: rust/<triple>, golang/stdlibs, linux/*, windows/vs-channels)."""
+    queued = 0
+    for p in paths:
+        try:
+            if ida_funcs.plan_to_apply_idasgn(p):
+                queued += 1
+        except Exception:
+            pass
+    return queued
+
+
+def apply_compiler_signatures(sigdir: str) -> tuple:
+    """Tier 1: compiler/format sigs from sig/<sigdir>, applied by bare name. For
+    'pc' scope to the detected compiler family (155 sigs); for the small non-pc
+    arch dirs (format-named, <10 sigs) apply them all. Returns (queued, label)."""
+    base = os.path.join(_IDADIR, "sig", sigdir)
+    try:
+        sigs = sorted(f[:-4] for f in os.listdir(base) if f.endswith(".sig"))
+    except OSError as exc:
+        print(f"[!] could not list FLIRT sigs at {base}: {exc}", file=sys.stderr)
+        return 0, ""
+    if sigdir == "pc":
+        prefixes = choose_flirt_prefixes()
+        names = [s for s in sigs if s.lower().startswith(tuple(prefixes))]
+        scope = "/".join(prefixes)
+    else:
+        names = sigs                       # tiny, format-named -> apply all
+        scope = ",".join(sigs)
+    q = _queue_by_name(names)
+    # Gate the label on q, not names: bare names are resolved arch-scoped, so a
+    # pc-fallback proc whose names don't resolve queues nothing — don't claim it did.
+    return q, (f"{sigdir}: {scope}" if q else "")
+
+
+def apply_go_signatures(sigdir: str, is64: bool) -> tuple:
+    """Tier 1: Go stdlib sigs. x86 ships go_std_* under sig/pc (bare name OK);
+    ARM/ARM64 have golang_std_{arm,arm64}_* under sig/golang/stdlibs (abs path)."""
+    if sigdir == "pc":
+        q = _queue_by_name(["go_std_abi0", "go_std_abiinternal"])
+        return q, ("go: pc" if q else "")
+    if sigdir == "arm":
+        tok = "arm64" if is64 else "arm"
+        gdir = os.path.join(_IDADIR, "sig", "golang", "stdlibs")
+        try:
+            paths = [os.path.join(gdir, f) for f in os.listdir(gdir)
+                     if f.startswith(f"golang_std_{tok}_") and f.endswith(".sig")]
+        except OSError:
+            paths = []
+        q = _queue_by_path(paths)
+        return q, (f"go: {tok}" if q else "")
+    return 0, ""               # no Go sigs shipped for other arches
+
+
+def _rust_triple(proc: str, is64: bool, filetype) -> str:
+    """Best-effort map IDA's arch + file type to a rustc target-triple dir name
+    under sig/rust/ (e.g. 'aarch64-apple-darwin'). '' when undeterminable."""
+    if proc.startswith("metapc"):
+        arch = "x86_64" if is64 else "i686"
+    elif proc.startswith("arm"):
+        arch = "aarch64" if is64 else "armv7"
+    else:
+        arch = ""
+    os_tok = {ida_ida.f_MACHO: "apple-darwin",
+              ida_ida.f_PE: "pc-windows-msvc",
+              ida_ida.f_ELF: "unknown-linux-gnu"}.get(filetype, "")
+    return f"{arch}-{os_tok}" if arch and os_tok else ""
+
+
+def _rust_dir(triple: str) -> str:
+    """Resolve sig/rust/<triple>/, with a substring fallback (e.g. musl/eabihf
+    variants of the same arch+OS). '' when nothing matches."""
+    sig_rust = os.path.join(_IDADIR, "sig", "rust")
+    if not triple or not os.path.isdir(sig_rust):
+        return ""
+    exact = os.path.join(sig_rust, triple)
+    if os.path.isdir(exact):
+        return exact
+    arch, _, os_part = triple.partition("-")
+    for d in sorted(os.listdir(sig_rust)):
+        if d.startswith(arch) and os_part and os_part in d:
+            return os.path.join(sig_rust, d)
+    return ""
+
+
+def _rust_ver(fname: str) -> tuple:
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", fname)
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+
+def apply_rust_signatures(triple: str, all_versions: bool = False) -> tuple:
+    """Rust std sigs under sig/rust/<triple>/ — off the sig/<proc> search path,
+    so applied by ABSOLUTE path. Default: the newest per-version rust_*.sig (one
+    version usually matches a given binary; wrong versions just CRC-miss). With
+    all_versions (--aggressive) queue every version. The shipped
+    rust_bundle_<triple> is .metadata-only (no .sig), so it is intentionally
+    skipped. Returns (queued, label)."""
+    tdir = _rust_dir(triple)
+    if not tdir:
+        return 0, ""
+    sigs = sorted((f for f in os.listdir(tdir) if f.endswith(".sig")), key=_rust_ver)
+    if not sigs:
+        return 0, ""
+    chosen = sigs if all_versions else [sigs[-1]]
+    q = _queue_by_path([os.path.join(tdir, f) for f in chosen])
+    dn = os.path.basename(tdir)
+    if all_versions:
+        label = f"rust: {dn}/all-versions ({len(chosen)})"
+    else:
+        label = f"rust: {dn}/{chosen[0][:-4]} (newest)"
+    return q, (label if q else "")
+
+
+def _distro_arch_token(proc: str, is64: bool) -> str:
+    """Map proc/bitness to the distro package-arch suffix used by
+    sig/linux/{debian,ubuntu}/*-<arch>.sig (best-effort)."""
+    if proc.startswith("metapc"):
+        return "amd64" if is64 else "i386"
+    if proc.startswith("arm"):
+        return "arm64" if is64 else "armhf"
+    if proc.startswith("mips"):
+        return "mips64el" if is64 else "mipsel"
+    return ""
+
+
+def apply_distro_signatures(proc: str, is64: bool) -> tuple:
+    """Tier 2 (ELF only): statically-linked distro package sigs under
+    sig/linux/{debian,ubuntu}/*-<arch>.sig (abs path). Hundreds of -dev package
+    sigs; most CRC-miss (time, not false names)."""
+    tok = _distro_arch_token(proc, is64)
+    if not tok:
+        return 0, ""
+    paths = []
+    for distro in ("debian", "ubuntu"):
+        d = os.path.join(_IDADIR, "sig", "linux", distro)
+        try:
+            paths += [os.path.join(d, f) for f in os.listdir(d)
+                      if f.endswith(f"-{tok}.sig")]
+        except OSError:
+            pass
+    q = _queue_by_path(paths)
+    return q, (f"distro: debian/ubuntu {tok} ({q}/{len(paths)})" if paths else "")
+
+
+def apply_vschannel_signatures() -> tuple:
+    """Tier 2 (PE only): modern MSVC CRT/MFC/ATL + Windows SDK sigs under
+    sig/windows/vs-channels/** (abs path)."""
+    root = os.path.join(_IDADIR, "sig", "windows", "vs-channels")
+    paths = []
+    for dp, _dirs, fns in os.walk(root):
+        paths += [os.path.join(dp, f) for f in fns if f.endswith(".sig")]
+    q = _queue_by_path(paths)
+    return q, (f"vs-channels ({q}/{len(paths)})" if paths else "")
+
+
+def plan_signatures(proc: str, filetype, is64: bool,
+                    analysis_path: str, aggressive: bool) -> list:
+    """Queue all applicable FLIRT signatures (Tier 1 always; Tier 2 when
+    aggressive). The caller's single auto_wait() applies them. Returns the list
+    of human-readable group labels for the console and the manifest."""
+    sigdir = _sig_subdir_for_proc(proc)
+    labels = []
+
+    def add(res):
+        _q, lab = res
+        if lab:
+            labels.append(lab)
+
+    add(apply_compiler_signatures(sigdir))
+    if _is_go(analysis_path):
+        add(apply_go_signatures(sigdir, is64))
+    if _is_rust(analysis_path):
+        add(apply_rust_signatures(_rust_triple(proc, is64, filetype),
+                                  all_versions=aggressive))
+    if aggressive:
+        if filetype == ida_ida.f_ELF:
+            add(apply_distro_signatures(proc, is64))
+        if filetype == ida_ida.f_PE:
+            add(apply_vschannel_signatures())
+    return labels
 
 
 # ---------------------------------------------------------------------------
@@ -396,20 +612,28 @@ def main() -> int:
         idapro.close_database(save=False)
         return 1
 
-    # Scoped FLIRT signatures are applied on EVERY run. Aggressive mode first
-    # maxes the analysis flags and re-plans the whole image (so signatures also
-    # land on newly-discovered code) and later stops skipping thunks.
-    go = _is_go(analysis_path)
+    # FLIRT signatures are applied on EVERY run (Tier 1), arch-correct. Aggressive
+    # mode first maxes the analysis flags and re-plans the whole image (so signatures
+    # also land on newly-discovered code), adds the expensive Tier-2 signature sets,
+    # and later stops skipping thunks.
     if aggressive:
         print("[*] Aggressive mode: max analysis flags + full re-plan + include thunks")
         set_aggressive_analysis()
         ida_auto.plan_and_wait(idaapi.inf_get_min_ea(), idaapi.inf_get_max_ea())
 
-    prefixes = choose_flirt_prefixes()
-    queued = apply_flirt_signatures(prefixes, go)
+    try:
+        is64 = bool(idaapi.inf_is_64bit())
+    except Exception:
+        is64 = False
+    filetype = idaapi.inf_get_filetype()
+    sig_labels = plan_signatures(proc_name, filetype, is64, analysis_path, aggressive)
     ida_auto.auto_wait()      # apply queued signatures (cheap when not re-planning)
-    label = "/".join(prefixes) + (" + Go stdlib" if go else "")
-    print(f"[*] Applied {queued} FLIRT signature(s) [{label}]")
+    if sig_labels:
+        print("[*] Applied FLIRT signatures:")
+        for lab in sig_labels:
+            print(f"      - {lab}")
+    else:
+        print("[*] No FLIRT signatures applied")
     print()
 
     # Prepare output directory: <binary>.ida.dec/
@@ -503,9 +727,10 @@ def main() -> int:
         "sha256": sha256_file(binary_path),
         "size": os.path.getsize(binary_path),
         "arch": proc_name,
-        "file_type": int(idaapi.inf_get_filetype()),
+        "file_type": int(filetype),
         "function_count": decompiled_count,
         "upx_unpacked": analysis_path != binary_path,
+        "signatures": sig_labels,
     }, manifest)
 
     print()
