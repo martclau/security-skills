@@ -237,8 +237,9 @@ Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), 
 1. Validates the binary path and clears any existing `.dec` output directory
 2. Runs `scripts/decompile.py` via Binary Ninja's bundled `bnpython3` interpreter
 3. Opens the binary with `binaryninja.load()`, waits for full analysis, then iterates `bv.functions`
-4. Decompiles each function via `func.hlil`; functions with no HLIL (imports, data) are silently skipped
-5. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`, matching the haruspex naming convention
+4. Names library functions automatically — WARP + the signature matcher cover C/C++ runtimes (`libc6`, `libgcc`, `libstdc++`, `msvcrt`) and `.gopclntab` covers Go. BN ships no Rust signature library, so stripped Rust std/crate functions stay `sub_*` (unlike `decompile-idapro`, which applies bundled Rust FLIRT sigs)
+5. Decompiles each function via `func.hlil`; functions with no HLIL (imports, data) are silently skipped
+6. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`, matching the haruspex naming convention
 
 **Requirements:** Binary Ninja Commercial or above (headless requires a commercial license). Install path defaults to `~/Downloads/binaryninja/`; override with `BN_DIR`.
 
@@ -273,8 +274,9 @@ Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decomp
 2. Removes stale IDA sidecar files (`.id0/.id1/.id2/.nam/.til`) that cause "corrupted DB" errors
 3. Opens the binary with `idapro.open_database(run_auto_analysis=True)` and waits for full analysis
 4. Loads the architecture-appropriate Hex-Rays plugin (e.g. `hexx64` for x86-64) explicitly — required in headless/idalib mode
-5. Iterates all functions, skips thunks (`FUNC_THUNK`), decompiles the rest via `ida_hexrays.decompile()`
-6. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`; license errors are fatal, other decompiler errors are skipped
+5. Applies FLIRT library signatures on every run, from the architecture-appropriate `sig/<proc>/` dir (x86, ARM, MIPS, …) scoped to the detected compiler, plus Go-stdlib and Rust-std signatures for those runtimes, so library functions get real names instead of `sub_*`. `--aggressive` adds the broad/expensive sets (all Rust versions, distro packages, Windows VS-channels) on top of maxed analysis flags + full re-plan. Applied groups are recorded in the `index.json` manifest (`meta.signatures`).
+6. Iterates all functions, skips thunks (`FUNC_THUNK`), decompiles the rest via `ida_hexrays.decompile()`
+7. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`; license errors are fatal, other decompiler errors are skipped
 
 **Requirements:** IDA Pro 9.x with a valid Hex-Rays decompiler license. Install path defaults to `~/.local/share/applications/IDA Professional 9.3/`.
 
