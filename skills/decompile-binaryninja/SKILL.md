@@ -83,6 +83,13 @@ counterpart, which must opt into FLIRT):
   does not set it.)
 - **Go** binaries are named from BN's built-in `.gopclntab` symbol recovery, which runs
   regardless of the above (BN ships no Go-specific signature library).
+- **Rust** binaries: BN demangles Rust symbols and renders *Pseudo Rust* (the bundled
+  `liblang_pseudorust` plugin), so symbol-bearing Rust reads cleanly. But BN ships **no Rust
+  signature library** (WARP bundles only `libc6`/`libgcc`/`libstdc++`/`msvcrt`), so on a
+  **stripped** Rust binary the std/runtime/crate functions stay `sub_*` unless you add a Rust
+  WARP/signature library yourself. This is the one spot where the `decompile-idapro`
+  counterpart does more out of the box: IDA ships bundled Rust FLIRT signatures
+  (`sig/rust/<triple>/`) that the skill applies automatically.
 
 All of this is purely static — nothing is executed — and composes with the UPX auto-unpack
 (e.g. a packed binary unpacks, then gets analyzed and named).
