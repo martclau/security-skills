@@ -17,11 +17,11 @@ Hand-written Mach-O parsers are easy to get subtly wrong (fat byte-order, `cmdsi
 
 ## Ready-to-run triage script (LIEF)
 
-`{baseDir}/scripts/macho_triage.py` is a validated, dependency-light script that prints identity, load-command highlights, dependencies/rpaths, the fixup scheme, encryption/signature status, and symbol-based hardening signals — iterating every slice of a fat binary.
+`${CLAUDE_SKILL_DIR}/scripts/macho_triage.py` is a validated, dependency-light script that prints identity, load-command highlights, dependencies/rpaths, the fixup scheme, encryption/signature status, and symbol-based hardening signals — iterating every slice of a fat binary.
 
 ```bash
 pip install lief            # if not already present
-python3 {baseDir}/scripts/macho_triage.py <file> [arch-substring]
+python3 ${CLAUDE_SKILL_DIR}/scripts/macho_triage.py <file> [arch-substring]
 ```
 
 Use it as a first pass, or as a template to extend (it shows the correct LIEF idioms: `lief.MachO.parse()` returns a `FatBinary` you iterate for slices; the install name comes from the `LC_ID_DYLIB` command, not a top-level attribute; load-command types are matched via `lief.MachO.LoadCommand.TYPE`). LIEF's API surface shifts between versions — if an attribute is missing, introspect with `dir(lief.MachO.Binary)` / `dir(lief.MachO.Header)` rather than assuming a name.

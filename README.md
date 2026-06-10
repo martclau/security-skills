@@ -170,7 +170,7 @@ Authors and reviews high-quality, import-free YARA detection rules that catch ma
 
 **Location:** `skills/yara-rule-authoring-review/`
 
-### find-vulns
+### find-vulnerabilities
 
 Scans source code files for security vulnerabilities, ranks them by severity, and produces a structured report with CWE IDs, root causes, proof-of-concept triggers, and suggested fixes.
 
@@ -185,13 +185,13 @@ Scans source code files for security vulnerabilities, ranks them by severity, an
 5. Ends with a summary table sorted by severity
 6. Saves the report to a requested path or `vuln-report-<filename>.txt`
 
-**Bundled CLI script:** `scripts/find-vulns.sh <source-file> [output-file]` — runs the skill headless via the Claude Code CLI with pre-approved tools and streaming progress output.
+**Bundled CLI script:** `scripts/find-vulnerabilities.sh <source-file> [output-file]` — runs the skill headless via the Claude Code CLI with pre-approved tools and streaming progress output.
 
-**Location:** `skills/find-vulns/`
+**Location:** `skills/find-vulnerabilities/`
 
-### validate-vuln
+### validate-vulnerability
 
-Validates inbound vulnerability reports by verifying whether each finding is actually exploitable. Complements `find-vulns` — use `find-vulns` to generate a report, then `validate-vuln` to triage one.
+Validates inbound vulnerability reports by verifying whether each finding is actually exploitable. Complements `find-vulnerabilities` — use `find-vulnerabilities` to generate a report, then `validate-vulnerability` to triage one.
 
 **Trigger phrases:** "validate this vuln report", "is this exploitable?", "triage this report", "verify these findings", providing a `*.vuln.md` file for review.
 
@@ -207,7 +207,7 @@ Validates inbound vulnerability reports by verifying whether each finding is act
 5. Assesses overall report quality (severity calibration, missed findings, call-graph analysis depth)
 6. Saves the validation report alongside the original
 
-**Location:** `skills/validate-vuln/`
+**Location:** `skills/validate-vulnerability/`
 
 ### c-build-test-review
 
@@ -358,11 +358,11 @@ security-skills/
     │   │   └── office_analyzer.py
     │   └── references/
     │       └── mitre-attck-office.md
-    ├── find-vulns/
+    ├── find-vulnerabilities/
     │   ├── SKILL.md
     │   └── scripts/
-    │       └── find-vulns.sh
-    ├── validate-vuln/
+    │       └── find-vulnerabilities.sh
+    ├── validate-vulnerability/
     │   └── SKILL.md
     ├── c-build-test-review/
     │   ├── SKILL.md

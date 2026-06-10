@@ -1,7 +1,7 @@
 ---
 name: dwarf-expert
-description: Provides deep expertise for analyzing, parsing, creating, and reasoning about DWARF debug information and the DWARF standard (v3, v4, v5). Use this skill whenever DWARF is involved in any way — answering questions about the DWARF format/standard, inspecting or extracting DWARF from a binary (.debug_info, .debug_line, .debug_abbrev, and other debug sections), decoding DIEs / tags / attributes / forms, working with dwarfdump, llvm-dwarfdump, readelf, eu-readelf, or objdump on debug data, verifying DWARF integrity, mapping addresses to source lines or functions, interpreting DWARF expressions and location/range lists, dealing with split DWARF (.dwo/.dwp), or writing/modifying/reviewing code that parses DWARF (libdwarf, pyelftools, gimli, debug/dwarf, LibObjectFile). Trigger even when the user does not say "DWARF" explicitly but is clearly working with compiled debug info, symbol/line tables, or debugger-format data.
-allowed-tools: Read Bash Grep Glob WebSearch
+description: Provides deep expertise for analyzing, parsing, creating, and reasoning about DWARF debug information and the DWARF standard (v3, v4, v5). Use this skill whenever DWARF is involved in any way — answering questions about the DWARF format/standard, inspecting or extracting DWARF from a binary (.debug_info, .debug_line, .debug_abbrev, and other debug sections), decoding DIEs / tags / attributes / forms, working with dwarfdump, llvm-dwarfdump, readelf, eu-readelf, or objdump on debug data, verifying DWARF integrity, mapping addresses to source lines or functions, interpreting DWARF expressions and location/range lists, dealing with split DWARF (.dwo/.dwp), or writing/modifying/reviewing code that parses DWARF (libdwarf, pyelftools, gimli, debug/dwarf, LibObjectFile). Trigger even when the user does not say "DWARF" explicitly but is clearly working with compiled debug info, symbol/line tables, or debugger-format data. This skill supplies DWARF format expertise and tooling; for general ELF container inspection use elf-expert, and for end-to-end security triage of a sample use binary-analysis.
+allowed-tools: Read, Bash, Grep, Glob, WebSearch
 ---
 
 # DWARF Expert
@@ -23,7 +23,7 @@ DWARF is the dominant debug-info format for ELF (Linux/BSD), and is also used in
 
 ## When NOT to Use This Skill
 - **DWARF v1/v2**: Expertise targets versions 3–5. v1/v2 are obsolete and structurally different (e.g. v2 used `.debug_pubnames`/`.debug_loc`/`.debug_ranges` rather than the v5 `.debug_names`/`.debug_loclists`/`.debug_rnglists`); flag the version gap rather than guessing.
-- **General ELF work with no debug info**: For symbol tables, segments, relocations, or hardening that don't touch `.debug_*`, use a general ELF approach or an ELF-specific skill.
+- **General ELF work with no debug info**: For symbol tables, segments, relocations, or hardening that don't touch `.debug_*`, use the `elf-expert` skill.
 - **Live/runtime debugging**: To actually run, breakpoint, or inspect a process, use `gdb`/`lldb`. DWARF is the static data those tools consume, not the debugger itself.
 - **Reverse engineering of stripped binaries**: Use Ghidra/IDA/radare2 unless the specific task is analyzing DWARF sections that are present.
 - **Compiler codegen bugs**: Wrong DWARF emitted by GCC/Clang is a toolchain issue. This skill helps *diagnose* malformed DWARF but does not fix compilers.
@@ -35,7 +35,7 @@ Before diving into tools, hold this model in mind — most confusion about DWARF
 - DIEs live in **`.debug_info`**, grouped into **compilation units (CUs)**. To save space, the actual DIE bytes in `.debug_info` don't repeat their structure; they reference an **abbreviation** in **`.debug_abbrev`** that declares the tag, the children flag, and the (attribute, form) list. **You almost always parse `.debug_abbrev` first, then `.debug_info`.**
 - Other sections hold specialized data: line tables (`.debug_line`), strings (`.debug_str`), address-to-source acceleration, location/range lists, call-frame info (`.debug_frame`/`.eh_frame`), and so on.
 
-For the full data model (CU header layout, the abbrev↔info relationship, common tags/attributes/forms, and how values are decoded), read `{baseDir}/reference/data-model.md`. For the complete section catalog including all v5 additions, read `{baseDir}/reference/sections.md`.
+For the full data model (CU header layout, the abbrev↔info relationship, common tags/attributes/forms, and how values are decoded), read `${CLAUDE_SKILL_DIR}/reference/data-model.md`. For the complete section catalog including all v5 additions, read `${CLAUDE_SKILL_DIR}/reference/sections.md`.
 
 # Authoritative Sources
 DWARF has many edge cases and version-specific behaviors. Do not rely on memory for specific constants, attribute applicability, or v5 semantics — verify against:
@@ -60,8 +60,8 @@ llvm-dwarfdump --debug-info <binary> | head   # peek at the CU/DIE tree
 If there are no `.debug_*` sections, the binary may be stripped, or (on macOS) the DWARF may live in a separate `.dSYM` bundle, or debug info may be in a separate `.debug`/`.dwo` file or fetched via debuginfod.
 
 ## Tools
-- **`dwarfdump` / `llvm-dwarfdump`** — the primary DWARF tools. Best for dumping the DIE tree, searching DIEs by name/address, showing parents/children, and verifying. Read `{baseDir}/reference/dwarfdump.md`.
-- **`readelf` / `eu-readelf` / `objdump`** — good for general ELF structure and section dumps; usable for DWARF but less ergonomic than dwarfdump. Read `{baseDir}/reference/readelf.md`.
+- **`dwarfdump` / `llvm-dwarfdump`** — the primary DWARF tools. Best for dumping the DIE tree, searching DIEs by name/address, showing parents/children, and verifying. Read `${CLAUDE_SKILL_DIR}/reference/dwarfdump.md`.
+- **`readelf` / `eu-readelf` / `objdump`** — good for general ELF structure and section dumps; usable for DWARF but less ergonomic than dwarfdump. Read `${CLAUDE_SKILL_DIR}/reference/readelf.md`.
 
 ## Verification & quality metrics
 Validate DWARF integrity and compare debug-info quality across builds/optimization levels:
@@ -74,32 +74,32 @@ llvm-dwarfdump --statistics <binary>                  # single-line JSON quality
 Common patterns: verify before distributing; use `--statistics` to catch debug-info regressions between compiler versions or `-O` levels; identify malformed DWARF that breaks debuggers; validate the output of DWARF-producing tools against known-good binaries.
 
 # Working With Code
-For writing, modifying, or reviewing code that parses or emits DWARF — including library choice (libdwarf, pyelftools, gimli, Go `debug/dwarf`, LibObjectFile) and runnable pyelftools examples — read `{baseDir}/reference/coding.md`.
+For writing, modifying, or reviewing code that parses or emits DWARF — including library choice (libdwarf, pyelftools, gimli, Go `debug/dwarf`, LibObjectFile) and runnable pyelftools examples — read `${CLAUDE_SKILL_DIR}/reference/coding.md`.
 
 # Line Programs, Expressions, and Lists
-For address↔line mapping (the `.debug_line` state machine), DWARF expressions/location descriptions (`DW_OP_*`), and location/range lists (including the v5 `.debug_loclists`/`.debug_rnglists`), read `{baseDir}/reference/line-and-expressions.md`.
+For address↔line mapping (the `.debug_line` state machine), DWARF expressions/location descriptions (`DW_OP_*`), and location/range lists (including the v5 `.debug_loclists`/`.debug_rnglists`), read `${CLAUDE_SKILL_DIR}/reference/line-and-expressions.md`.
 
 # Version Differences & Split DWARF
-For what changed across v3→v4→v5 (new sections, replaced sections, indexed forms, the v5 unit-header `unit_type` byte) and how split DWARF (`.dwo`/`.dwp`) and supplementary files work, read `{baseDir}/reference/dwarf5-changes.md`. Always confirm the DWARF version first (`llvm-dwarfdump --debug-info <binary> | grep version`, or the CU header's `version` field) — semantics and section names differ by version, and a single binary can mix CUs of different versions.
+For what changed across v3→v4→v5 (new sections, replaced sections, indexed forms, the v5 unit-header `unit_type` byte) and how split DWARF (`.dwo`/`.dwp`) and supplementary files work, read `${CLAUDE_SKILL_DIR}/reference/dwarf5-changes.md`. Always confirm the DWARF version first (`llvm-dwarfdump --debug-info <binary> | grep version`, or the CU header's `version` field) — semantics and section names differ by version, and a single binary can mix CUs of different versions.
 
 # Choosing Your Approach
 ```
 ┌─ Question about the DWARF standard / what a DW_* constant means?
 │   └─ Use the data-model + sections references; verify specifics on dwarfstd.org / LLVM source
 ├─ Need to know what sections exist or what one section is for?
-│   └─ {baseDir}/reference/sections.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/sections.md
 ├─ Need the data model (DIEs, abbrev↔info, tags/attributes/forms)?
-│   └─ {baseDir}/reference/data-model.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/data-model.md
 ├─ Need to verify DWARF integrity or compare build quality?
 │   └─ llvm-dwarfdump --verify / --statistics (see Verification above)
 ├─ Need a quick section dump or general ELF info?
-│   └─ {baseDir}/reference/readelf.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/readelf.md
 ├─ Need to browse/search the DIE tree, or look up a DIE by name/address?
-│   └─ {baseDir}/reference/dwarfdump.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/dwarfdump.md
 ├─ Need address↔line mapping, DWARF expressions, or location/range lists?
-│   └─ {baseDir}/reference/line-and-expressions.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/line-and-expressions.md
 ├─ Working across DWARF versions, or with .dwo/.dwp split DWARF?
-│   └─ {baseDir}/reference/dwarf5-changes.md
+│   └─ ${CLAUDE_SKILL_DIR}/reference/dwarf5-changes.md
 └─ Writing/modifying/reviewing code that handles DWARF?
-    └─ {baseDir}/reference/coding.md
+    └─ ${CLAUDE_SKILL_DIR}/reference/coding.md
 ```

@@ -3,7 +3,7 @@ name: decompile-idapro
 description: Decompile a binary with IDA Pro headless mode. Extracts pseudocode for every non-thunk function into <binary>.ida.dec/<funcname>@<ADDR>.c files. Invoke manually with /decompile-idapro <binary>.
 argument-hint: <binary_path>
 disable-model-invocation: true
-allowed-tools: Bash(python3 *), Bash(rm -rf *), Bash(file *), Bash(ls *)
+allowed-tools: Bash(python3 *), Bash(rm -rf *.ida.dec*), Bash(file *), Bash(ls *)
 ---
 
 Decompile `$ARGUMENTS` using IDA Pro 9.3 via the `idapro` Python library (headless idalib).

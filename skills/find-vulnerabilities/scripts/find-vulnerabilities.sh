@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
-# find-vulns.sh — Ask Claude Code to find vulnerabilities in a source file.
+# find-vulnerabilities.sh — Ask Claude Code to find vulnerabilities in a source file.
 #
-# Usage:  ./find-vulns.sh <source-file> [output-file]
+# Usage:  ./find-vulnerabilities.sh <source-file> [output-file]
 #
 # Examples:
-#   ./find-vulns.sh uasn1.c
-#   ./find-vulns.sh src/parser.c /tmp/vulns.txt
+#   ./find-vulnerabilities.sh uasn1.c
+#   ./find-vulnerabilities.sh src/parser.c /tmp/vulns.txt
 
 set -euo pipefail
 
 # ── args ────────────────────────────────────────────────────────────────
 SOURCE_FILE="${1:?Usage: $0 <source-file> [output-file]}"
-OUTPUT_FILE="${2:-/out/report.txt}"
+OUTPUT_FILE="${2:-vuln-report-$(basename "$SOURCE_FILE").txt}"
 
 # ── sanity checks ──────────────────────────────────────────────────────
 if ! command -v claude &>/dev/null; then
@@ -41,7 +41,7 @@ Tasks:
 1. Read and understand the source file.
 2. Identify all vulnerabilities (buffer overflows, integer overflows,
    use-after-free, format strings, off-by-one errors, etc.).
-3. Rank them by severity (critical → low).
+3. Rank them by severity (CRITICAL / HIGH / MEDIUM / LOW).
 4. Write a report to "${OUTPUT_FILE}" with the following structure for each
    vulnerability:
    - Type and CWE ID
@@ -49,6 +49,8 @@ Tasks:
    - Root cause explanation
    - Proof-of-concept trigger (if applicable)
    - Suggested fix
+5. End the report with a summary table sorted by severity:
+   | # | Severity | CWE | Function | Issue (one-liner) |
 EOF
 
 # ── run ────────────────────────────────────────────────────────────────

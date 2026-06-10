@@ -1,7 +1,7 @@
 ---
 name: macho-expert
-description: Provides expertise for inspecting, analyzing, and modifying Mach-O (Mach Object) binaries — the executable format used by macOS and iOS. Use this skill whenever a Mach-O file is involved, including examining headers, load commands, segments, sections, symbol tables, or code signatures; identifying fat/universal binaries and their slices; assessing binary hardening such as PIE, stack canaries, ARC, encryption, hardened runtime, and entitlements; using otool, nm, objdump, codesign, lipo, or dyld_info; modifying Mach-O files with lipo, install_name_tool, strip, or vtool; or writing and reviewing code that parses Mach-O data. Trigger even on casual phrasing like "what's in this .dylib", "is this Mac app 64-bit", "why won't this binary load", or "extract the arm64 slice", and whenever a file is identified as Mach-O, a .dylib, .bundle, or .framework, an iOS app binary, or a macOS executable.
-allowed-tools: Read Bash Grep Glob WebSearch
+description: Provides expertise for inspecting, analyzing, and modifying Mach-O (Mach Object) binaries — the executable format used by macOS and iOS. Use this skill whenever a Mach-O file is involved, including examining headers, load commands, segments, sections, symbol tables, or code signatures; identifying fat/universal binaries and their slices; assessing binary hardening such as PIE, stack canaries, ARC, encryption, hardened runtime, and entitlements; using otool, nm, objdump, codesign, lipo, or dyld_info; modifying Mach-O files with lipo, install_name_tool, strip, or vtool; or writing and reviewing code that parses Mach-O data. Trigger even on casual phrasing like "what's in this .dylib", "is this Mac app 64-bit", "why won't this binary load", or "extract the arm64 slice", and whenever a file is identified as Mach-O, a .dylib, .bundle, or .framework, an iOS app binary, or a macOS executable. This skill supplies format/ABI expertise and tooling, not a malware verdict; for end-to-end security triage of a sample use binary-analysis, and for full decompilation use decompile-binaryninja or decompile-idapro.
+allowed-tools: Read, Bash, Grep, Glob, WebSearch
 ---
 
 # Overview
@@ -23,17 +23,17 @@ This is **static, on-disk analysis**. For runtime debugging use a debugger (lldb
 
 ## When NOT to Use This Skill
 
-- **Other binary formats**: For ELF (Linux) use an ELF-focused tool/skill; for PE/COFF (Windows) use a PE tool. `LIEF` and `llvm-objdump` are cross-format if a single tool is required.
+- **Other binary formats**: For ELF (Linux) use the `elf-expert` skill; for PE/COFF (Windows) use a PE tool. `LIEF` and `llvm-objdump` are cross-format if a single tool is required.
 - **Runtime / dynamic debugging**: Use `lldb` (and `dtrace`/`fs_usage`/Instruments) for runtime behavior; this skill is for the on-disk file.
 - **Deep reverse engineering / decompilation**: Use Ghidra, IDA, Hopper, or Binary Ninja. Use `otool -tV` / `objdump -d` only for light disassembly and dumps.
-- **DWARF debug info**: Decoding `.dSYM`/DWARF semantics is a separate concern (`dwarfdump`, `llvm-dwarfdump`). This skill covers locating the segments and the `LC_UUID` linkage, not decoding DWARF.
+- **DWARF debug info**: Decoding `.dSYM`/DWARF semantics is the `dwarf-expert` skill's territory (`dwarfdump`, `llvm-dwarfdump`). This skill covers locating the segments and the `LC_UUID` linkage, not decoding DWARF.
 - **Generating/signing for distribution policy**: Notarization workflow, provisioning profiles, and App Store rules are toolchain/policy topics, not file-format analysis (though inspecting the resulting signature/entitlements *is* in scope).
 
 # Mach-O Format Reference
 
-For the structural reference — the (optional) fat header and slices, the Mach-O header, the load-command stream, segments vs. sections, the LINKEDIT-resident tables (symbols, dyld info / chained fixups, exports, code signature), and how the loader consumes them — see `{baseDir}/reference/format.md`.
+For the structural reference — the (optional) fat header and slices, the Mach-O header, the load-command stream, segments vs. sections, the LINKEDIT-resident tables (symbols, dyld info / chained fixups, exports, code signature), and how the loader consumes them — see `${CLAUDE_SKILL_DIR}/reference/format.md`.
 
-For the catalog of load commands (`LC_SEGMENT_64`, `LC_LOAD_DYLIB`, `LC_MAIN`, `LC_DYLD_INFO_ONLY`, `LC_DYLD_CHAINED_FIXUPS`, `LC_CODE_SIGNATURE`, `LC_UUID`, `LC_BUILD_VERSION`, `LC_ENCRYPTION_INFO_64`, etc.) — what each one carries and why it matters — see `{baseDir}/reference/load_commands.md`.
+For the catalog of load commands (`LC_SEGMENT_64`, `LC_LOAD_DYLIB`, `LC_MAIN`, `LC_DYLD_INFO_ONLY`, `LC_DYLD_CHAINED_FIXUPS`, `LC_CODE_SIGNATURE`, `LC_UUID`, `LC_BUILD_VERSION`, `LC_ENCRYPTION_INFO_64`, etc.) — what each one carries and why it matters — see `${CLAUDE_SKILL_DIR}/reference/load_commands.md`.
 
 # Authoritative Sources
 
@@ -66,7 +66,7 @@ Always confirm a tool exists before recommending its exact invocation; fall back
 
 ## otool / llvm-objdump (primary structural dumper)
 
-`otool` (or `llvm-objdump --macho`) is the canonical Mach-O dumper: header (`-h`), load commands (`-l`), specific commands like dylibs (`-L`) and the install name (`-D`), section contents (`-s`), and light disassembly (`-tV`). For the command catalog and equivalents across `otool` / `llvm-objdump` / `objdump`, see `{baseDir}/reference/tools.md`.
+`otool` (or `llvm-objdump --macho`) is the canonical Mach-O dumper: header (`-h`), load commands (`-l`), specific commands like dylibs (`-L`) and the install name (`-D`), section contents (`-s`), and light disassembly (`-tV`). For the command catalog and equivalents across `otool` / `llvm-objdump` / `objdump`, see `${CLAUDE_SKILL_DIR}/reference/tools.md`.
 
 ## nm / dyld_info / codesign (symbols, bindings, signature)
 
@@ -74,7 +74,7 @@ Always confirm a tool exists before recommending its exact invocation; fall back
 - **`dyld_info`** (modern macOS) or `otool`'s dyld flags: rebase/bind/lazy-bind/export opcodes and chained fixups — i.e., what dyld will patch at load.
 - **`codesign -dvvv --entitlements :-`**: code-signing identity, hardened-runtime flags, and entitlements (macOS only). On other platforms, parse the `LC_CODE_SIGNATURE` blob with LIEF.
 
-See `{baseDir}/reference/tools.md` for exact flags and cross-tool equivalents.
+See `${CLAUDE_SKILL_DIR}/reference/tools.md` for exact flags and cross-tool equivalents.
 
 # Security Hardening Inspection
 
@@ -104,11 +104,11 @@ For changing Mach-O contents, prefer purpose-built tools over hand-editing bytes
 - **`vtool`**: read or set platform/min-OS/SDK version load commands (`LC_BUILD_VERSION`).
 - **Re-signing**: any content change invalidates `LC_CODE_SIGNATURE`. After modifying, re-sign with `codesign -s <identity> --force` (or ad-hoc `-s -`), or the binary will fail to load on a Mac with code-signing enforcement.
 
-See `{baseDir}/reference/tools.md` for exact invocations. For programmatic structural edits, `LIEF` can add/remove load commands and rewrite the binary.
+See `${CLAUDE_SKILL_DIR}/reference/tools.md` for exact invocations. For programmatic structural edits, `LIEF` can add/remove load commands and rewrite the binary.
 
 # Working With Code
 
-This skill supports writing, modifying, and reviewing code that parses or manipulates Mach-O data — both from-scratch parsers (reading `mach_header_64`, walking `ncmds` load commands by `cmdsize`, handling fat wrappers and byte order) and library-backed code (LIEF, macholib, goblin, the Go `debug/macho` package, Apple's `<mach-o/loader.h>`). See `{baseDir}/reference/coding.md`, which includes a ready-to-run LIEF triage script.
+This skill supports writing, modifying, and reviewing code that parses or manipulates Mach-O data — both from-scratch parsers (reading `mach_header_64`, walking `ncmds` load commands by `cmdsize`, handling fat wrappers and byte order) and library-backed code (LIEF, macholib, goblin, the Go `debug/macho` package, Apple's `<mach-o/loader.h>`). See `${CLAUDE_SKILL_DIR}/reference/coding.md`, which includes a ready-to-run LIEF triage script.
 
 # Choosing Your Approach
 
@@ -118,21 +118,21 @@ This skill supports writing, modifying, and reviewing code that parses or manipu
 ├─ File is fat/universal and you care about one arch?
 │   └─ Use `lipo -info` / `lipo -thin <arch>`; pass `-arch <arch>` to later tools
 ├─ Need to explain or recall the Mach-O format/load commands?
-│   └─ See {baseDir}/reference/format.md and {baseDir}/reference/load_commands.md;
+│   └─ See ${CLAUDE_SKILL_DIR}/reference/format.md and ${CLAUDE_SKILL_DIR}/reference/load_commands.md;
 │      verify values against <mach-o/loader.h> or LLVM's MachO.h
 ├─ Need to assess hardening (PIE/canary/ARC/encryption/hardened-runtime/signature)?
 │   └─ Use the Security Hardening table above + otool/codesign (or LIEF if on non-macOS)
 ├─ Need Mach-O structure (header/load commands/segments/sections/dylibs/dyld info)?
 │   └─ Use `otool -hl…` or `llvm-objdump --macho`; on bare Linux use LIEF
-│      ({baseDir}/reference/tools.md)
+│      (${CLAUDE_SKILL_DIR}/reference/tools.md)
 ├─ Need symbols / bindings / exports?
-│   └─ Use `nm` (+ c++filt/swift-demangle) and `dyld_info` ({baseDir}/reference/tools.md)
+│   └─ Use `nm` (+ c++filt/swift-demangle) and `dyld_info` (${CLAUDE_SKILL_DIR}/reference/tools.md)
 ├─ Need code-signature / entitlements detail?
 │   └─ Use `codesign -dvvv --entitlements :-` (macOS) or parse LC_CODE_SIGNATURE via LIEF
 ├─ Need disassembly or raw section content?
 │   └─ Use `otool -tV` / `objdump -d`; for deep RE use Ghidra/IDA/Hopper/rizin
 ├─ Need to modify a Mach-O (lipo/install_name_tool/strip/vtool)?
-│   └─ See {baseDir}/reference/tools.md — and re-sign afterward
+│   └─ See ${CLAUDE_SKILL_DIR}/reference/tools.md — and re-sign afterward
 └─ Need to write, modify, or review code that parses/manipulates Mach-O data?
-    └─ See {baseDir}/reference/coding.md
+    └─ See ${CLAUDE_SKILL_DIR}/reference/coding.md
 ```

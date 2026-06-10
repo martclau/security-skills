@@ -3,7 +3,7 @@ name: decompile-binaryninja
 description: Decompile a binary with Binary Ninja headless mode. Extracts Pseudo C for every function into <binary>.bn.dec/<funcname>@<ADDR>.c files. Invoke manually with /decompile-binaryninja <binary>.
 argument-hint: <binary_path>
 disable-model-invocation: true
-allowed-tools: Bash(python3 *), Bash(rm -rf *), Bash(file *), Bash(ls *)
+allowed-tools: Bash(python3 *), Bash(rm -rf *.bn.dec*), Bash(file *), Bash(ls *)
 ---
 
 Decompile `$ARGUMENTS` using Binary Ninja headless mode via the bundled `scripts/decompile.py` script at `${CLAUDE_SKILL_DIR}/scripts/decompile.py`.

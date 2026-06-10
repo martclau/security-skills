@@ -7,6 +7,7 @@ description: >
   Trigger on phrases like "analyze this document", "check this Word file", "suspicious Office
   file", "macro analysis", "OLE analysis", "RTF analysis", "weaponized document", "phishing
   attachment", or "what does this document do".
+allowed-tools: Bash(python3 *), Bash(file *), Bash(ls *), Bash(oledump.py *), Bash(zipdump.py *), Bash(rtfdump.py *)
 ---
 
 # Microsoft Office Document Security Analysis Skill
@@ -103,7 +104,7 @@ If decryption fails, note it and ask the user for the password. Many malware sam
 Run the bundled triage helper to standardize output:
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --triage "$WORK_DIR/target" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --triage "$WORK_DIR/target" \
     -o "$WORK_DIR/triage.json"
 ```
 
@@ -137,7 +138,7 @@ Check for specific high-interest streams:
 
 ```bash
 # Equation Editor object (CVE-2017-11882 vessel)
-python3 <skill-path>/scripts/office_analyzer.py --check-equation "$WORK_DIR/target"
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --check-equation "$WORK_DIR/target"
 
 # OLE objects and external link references
 oleobj "$WORK_DIR/target" -d "$WORK_DIR/ole_objects/"
@@ -186,7 +187,7 @@ The critical template injection indicator is a `.rels` entry of relationship typ
 the remote template on document open, with no macro warning.
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --check-rels "$WORK_DIR/ooxml_extracted/" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --check-rels "$WORK_DIR/ooxml_extracted/" \
     -o "$WORK_DIR/rels_report.json"
 ```
 
@@ -228,7 +229,7 @@ Each extracted object should be typed with `file` and analyzed independently.
 Check for remote template reference (CVE-2017-0199 and variants):
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --check-rtf-template "$WORK_DIR/target"
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --check-rtf-template "$WORK_DIR/target"
 ```
 
 The `\*\template` control word pointing to an external URL causes Word to fetch and load
@@ -384,7 +385,7 @@ For heavily obfuscated VBA (from `$WORK_DIR/vba_source.txt`):
 Run the bundled deobfuscation helper for common patterns:
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --deobfuscate "$WORK_DIR/vba_source.txt" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --deobfuscate "$WORK_DIR/vba_source.txt" \
     -o "$WORK_DIR/deobfuscated_iocs.json"
 ```
 
@@ -395,7 +396,7 @@ python3 <skill-path>/scripts/office_analyzer.py --deobfuscate "$WORK_DIR/vba_sou
 Consolidate all network and host indicators:
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --iocs "$WORK_DIR/target" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --iocs "$WORK_DIR/target" \
     --vba-source "$WORK_DIR/vba_source.txt" \
     --vipermonkey "$WORK_DIR/vipermonkey.txt" \
     -o "$WORK_DIR/iocs.json"
@@ -420,7 +421,7 @@ python3 <skill-path>/scripts/office_analyzer.py --iocs "$WORK_DIR/target" \
 ### Optional: VirusTotal hash lookup
 
 ```bash
-python3 <skill-path>/scripts/office_analyzer.py --vt-hash <SHA256> \
+python3 "${CLAUDE_SKILL_DIR}/scripts/office_analyzer.py" --vt-hash <SHA256> \
     -o "$WORK_DIR/vt_report.json"
 ```
 
@@ -468,7 +469,7 @@ Use the most severe applicable verdict:
 
 ### MITRE ATT&CK mapping
 
-Reference `<skill-path>/references/mitre-attck-office.md` when mapping findings to techniques.
+Reference `${CLAUDE_SKILL_DIR}/references/mitre-attck-office.md` when mapping findings to techniques.
 Key techniques for Office malware:
 
 | Finding | Technique | ID |

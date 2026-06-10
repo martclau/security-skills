@@ -1,7 +1,7 @@
 ---
 name: elf-expert
-description: Provides expertise for inspecting, analyzing, and modifying ELF (Executable and Linkable Format) binaries and understanding the ELF format/ABI. Triggers when examining ELF headers, sections, segments, symbols, relocations, or dynamic data; inspecting binary hardening (NX, RELRO, PIE, canaries); using readelf/objdump/nm; modifying ELF files (strip, objcopy, patchelf); or writing/reviewing code that parses ELF data.
-allowed-tools: Read Bash Grep Glob WebSearch
+description: Provides expertise for inspecting, analyzing, and modifying ELF (Executable and Linkable Format) binaries and understanding the ELF format/ABI. Triggers when examining ELF headers, sections, segments, symbols, relocations, or dynamic data; inspecting binary hardening (NX, RELRO, PIE, canaries); using readelf/objdump/nm; modifying ELF files (strip, objcopy, patchelf); or writing/reviewing code that parses ELF data. This skill supplies format/ABI expertise and tooling, not a malware verdict; for end-to-end security triage of a sample use binary-analysis, and for full decompilation use decompile-binaryninja or decompile-idapro.
+allowed-tools: Read, Bash, Grep, Glob, WebSearch
 ---
 # Overview
 This skill provides technical knowledge and expertise about the ELF (Executable and Linkable Format) standard and how to interact with ELF files. Tasks include answering questions about the ELF format/ABI, inspecting and dumping ELF structure (headers, sections, segments, symbols, relocations, dynamic data, notes), assessing binary hardening, modifying ELF files, and writing/modifying/analyzing code that parses ELF data.
@@ -17,14 +17,14 @@ This skill provides technical knowledge and expertise about the ELF (Executable 
 - Writing or reviewing code that parses or manipulates ELF data (pyelftools, LIEF, libelf, goblin, etc.)
 
 ## When NOT to Use This Skill
-- **DWARF Debug Info**: For parsing or interpreting `.debug_*` sections specifically, use a DWARF-focused tool/skill (`dwarfdump`, `llvm-dwarfdump`). This skill covers locating and dumping those sections, not decoding DWARF semantics.
-- **Other Binary Formats**: For PE/COFF (Windows) or Mach-O (macOS), use format-appropriate tools. `LIEF` and `llvm-objdump` are cross-format if a single tool is required.
+- **DWARF Debug Info**: For parsing or interpreting `.debug_*` sections specifically, use the `dwarf-expert` skill (and `dwarfdump`/`llvm-dwarfdump`). This skill covers locating and dumping those sections, not decoding DWARF semantics.
+- **Other Binary Formats**: For Mach-O (macOS/iOS), use the `macho-expert` skill; for PE/COFF (Windows), use format-appropriate tools. `LIEF` and `llvm-objdump` are cross-format if a single tool is required.
 - **Runtime / Dynamic Debugging**: Use dedicated debuggers (gdb, lldb) and tracers (strace, ltrace) for runtime behavior; this skill is for static, on-disk analysis.
 - **Reverse Engineering / Deep Disassembly**: Use dedicated RE tools (Ghidra, IDA, Binary Ninja, radare2/rizin). Use `objdump` only for light disassembly and section dumps.
 - **Compiler/Linker Configuration**: Issues with *how* a toolchain emits ELF (linker scripts, codegen flags) are toolchain-specific and not covered here.
 
 # ELF Format Reference
-For the structural reference — the dual linking/execution views, the ELF header, program headers (segments), section headers (sections), the symbol table, relocations, the dynamic section, notes, and how to disambiguate ET_DYN (PIE vs shared object) — see `{baseDir}/reference/format.md`.
+For the structural reference — the dual linking/execution views, the ELF header, program headers (segments), section headers (sections), the symbol table, relocations, the dynamic section, notes, and how to disambiguate ET_DYN (PIE vs shared object) — see `${CLAUDE_SKILL_DIR}/reference/format.md`.
 
 # Authoritative Sources
 When precise ELF facts are needed (constant values, struct layouts, relocation types), prefer these over recall:
@@ -41,13 +41,13 @@ Start with the smallest tool that answers the question, escalating only as neede
 Use `file <binary>` for a one-line summary (class, endianness, type, machine, dynamic/static, stripped, interpreter) before deeper inspection.
 
 ## readelf (primary)
-`readelf` is the canonical structural dumper for ELF: headers, segments, sections, symbols, relocations, dynamic entries, and notes. Use it for nearly all read-only ELF inspection. See `{baseDir}/reference/readelf.md` (also covers `llvm-readelf`/`llvm-readobj`, `eu-readelf`, and the companion tools `nm`, `size`, `ldd`, `strings`, `c++filt`).
+`readelf` is the canonical structural dumper for ELF: headers, segments, sections, symbols, relocations, dynamic entries, and notes. Use it for nearly all read-only ELF inspection. See `${CLAUDE_SKILL_DIR}/reference/readelf.md` (also covers `llvm-readelf`/`llvm-readobj`, `eu-readelf`, and the companion tools `nm`, `size`, `ldd`, `strings`, `c++filt`).
 
 ## objdump (disassembly and content dumps)
-Use `objdump` when the task needs disassembly, source interleaving, or raw section content rather than structural metadata. See `{baseDir}/reference/objdump.md`. For anything beyond light disassembly, route to a dedicated RE tool (see *When NOT to Use*).
+Use `objdump` when the task needs disassembly, source interleaving, or raw section content rather than structural metadata. See `${CLAUDE_SKILL_DIR}/reference/objdump.md`. For anything beyond light disassembly, route to a dedicated RE tool (see *When NOT to Use*).
 
 # Security Hardening Inspection
-A frequent ELF task is assessing exploit-mitigation hardening (the `checksec` workflow). Each property is detectable from static ELF data, primarily via `readelf`. Detection commands are in `{baseDir}/reference/readelf.md`.
+A frequent ELF task is assessing exploit-mitigation hardening (the `checksec` workflow). Each property is detectable from static ELF data, primarily via `readelf`. Detection commands are in `${CLAUDE_SKILL_DIR}/reference/readelf.md`.
 
 | Mitigation | What to inspect | Indicates ENABLED when |
 |------------|-----------------|------------------------|
@@ -61,25 +61,25 @@ A frequent ELF task is assessing exploit-mitigation hardening (the `checksec` wo
 For a one-shot report, `checksec --file=<binary>` (if installed) summarizes these; otherwise derive them from the `readelf` commands above.
 
 # Modifying ELF Files
-For changing ELF contents — stripping symbols/debug info, adding/removing/dumping sections, splitting debug info (`--only-keep-debug` + `--add-gnu-debuglink`), and adjusting dynamic metadata (interpreter, `RPATH`/`RUNPATH`, `DT_NEEDED`, `SONAME`) with `patchelf` — see `{baseDir}/reference/modification.md`. Prefer purpose-built tools (or `LIEF` for programmatic structural edits) over hand-editing bytes, which easily corrupts offsets.
+For changing ELF contents — stripping symbols/debug info, adding/removing/dumping sections, splitting debug info (`--only-keep-debug` + `--add-gnu-debuglink`), and adjusting dynamic metadata (interpreter, `RPATH`/`RUNPATH`, `DT_NEEDED`, `SONAME`) with `patchelf` — see `${CLAUDE_SKILL_DIR}/reference/modification.md`. Prefer purpose-built tools (or `LIEF` for programmatic structural edits) over hand-editing bytes, which easily corrupts offsets.
 
 # Working With Code
-This skill supports writing, modifying, and reviewing code that parses or manipulates ELF data — both from-scratch parsers and library-backed code (pyelftools, LIEF, libelf/elfutils, goblin, `object`, `debug/elf`, LibObjectFile). See `{baseDir}/reference/coding.md`.
+This skill supports writing, modifying, and reviewing code that parses or manipulates ELF data — both from-scratch parsers and library-backed code (pyelftools, LIEF, libelf/elfutils, goblin, `object`, `debug/elf`, LibObjectFile). See `${CLAUDE_SKILL_DIR}/reference/coding.md`.
 
 # Choosing Your Approach
 ```
 ┌─ Need a one-line identification (class/type/machine/stripped)?
 │   └─ Use `file <binary>`
 ├─ Need to explain or recall the ELF format/ABI?
-│   └─ See {baseDir}/reference/format.md; verify values against /usr/include/elf.h or the psABI
+│   └─ See ${CLAUDE_SKILL_DIR}/reference/format.md; verify values against /usr/include/elf.h or the psABI
 ├─ Need to assess binary hardening (NX/RELRO/PIE/canary/FORTIFY/RPATH)?
-│   └─ Use the Security Hardening table above + `readelf` ({baseDir}/reference/readelf.md)
+│   └─ Use the Security Hardening table above + `readelf` (${CLAUDE_SKILL_DIR}/reference/readelf.md)
 ├─ Need ELF structure (headers/segments/sections/symbols/relocs/dynamic/notes)?
-│   └─ Use `readelf` ({baseDir}/reference/readelf.md)
+│   └─ Use `readelf` (${CLAUDE_SKILL_DIR}/reference/readelf.md)
 ├─ Need disassembly or raw section content?
-│   └─ Use `objdump` ({baseDir}/reference/objdump.md); for deep RE use Ghidra/IDA/rizin
+│   └─ Use `objdump` (${CLAUDE_SKILL_DIR}/reference/objdump.md); for deep RE use Ghidra/IDA/rizin
 ├─ Need to modify an ELF (strip/objcopy/patchelf/elfedit)?
-│   └─ See {baseDir}/reference/modification.md
+│   └─ See ${CLAUDE_SKILL_DIR}/reference/modification.md
 └─ Need to write, modify, or review code that parses/manipulates ELF data?
-    └─ See {baseDir}/reference/coding.md
+    └─ See ${CLAUDE_SKILL_DIR}/reference/coding.md
 ```

@@ -16,6 +16,7 @@ description: >
   owned-assets monitoring tool — it is NOT for pentesting third parties and it
   never performs port scanning, login brute-force, directory brute-force,
   vulnerability probing, or any impactful active technique.
+allowed-tools: Bash(python *), Bash(python3 *)
 ---
 
 # Attack-Surface Monitoring (asm-recon)
@@ -110,8 +111,9 @@ The script writes `<output-dir>/<today>.json` and overwrites
 snapshots.
 
 ### 4. Present the results
-Use the `present_files` tool to surface `REPORT.md` first (it is the
-human-readable view), then the dated JSON. Give a brief summary highlighting:
+Surface `REPORT.md` first (it is the human-readable view), then the dated
+JSON — give the user their paths, or in claude.ai contexts present them with
+the `present_files` tool. Give a brief summary highlighting:
 - Any **HIGH** findings (AXFR permitted, dangling CNAMEs / takeover candidates,
   expired certs).
 - The **changes since last run**, if this was not the baseline run.

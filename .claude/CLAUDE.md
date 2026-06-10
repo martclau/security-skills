@@ -15,8 +15,8 @@ This repository contains Claude Code skills focused on security analysis, intell
 | `alphaxiv-paper-lookup`    | arxiv URL or paper ID                                             | Fetch AI-generated paper overviews from alphaxiv.org               |
 | `binary-analysis`          | "analyze this binary / executable / malware sample"               | Static security analysis of ELF, PE, Mach-O binaries and firmware  |
 | `office-analysis`          | "analyze this document / suspicious Office file / macro analysis" | Static security analysis of OLE2, OOXML, and RTF documents         |
-| `find-vulns`               | "find vulnerabilities / audit code / security review"             | Severity-ranked vulnerability report with CWE IDs and PoC triggers |
-| `validate-vuln`            | "validate/triage vuln report / is this exploitable?"              | Verify exploitability of inbound vuln reports via call-graph analysis |
+| `find-vulnerabilities`     | "find vulnerabilities / audit code / security review"             | Severity-ranked vulnerability report with CWE IDs and PoC triggers |
+| `validate-vulnerability`   | "validate/triage vuln report / is this exploitable?"              | Verify exploitability of inbound vuln reports via call-graph analysis |
 | `c-build-test-review`      | "review my GCC flags / harden this build / sanitizers"            | Audit C/C++ build, compiler-flag, assertion, and test configuration |
 | `decompile-binaryninja`    | "decompile with BN / Binary Ninja"                                | Headless Binary Ninja HLIL decompilation, one .c file per function |
 | `decompile-idapro`         | "decompile with IDA / IDA Pro"                                    | Headless IDA Pro Hex-Rays decompilation, one .c file per function  |
@@ -32,7 +32,7 @@ This repository contains Claude Code skills focused on security analysis, intell
 Skills in this repo follow a shared layout. Knowing where to look saves a lot of time when editing one:
 
 - `SKILL.md` — Claude-facing prose. Frontmatter (`name`, `description`) drives trigger matching; the body is the procedure Claude follows.
-- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, `skill-security-validator`, and `macho-expert` (`macho_triage.py`); a shell driver for `find-vulns`; headless-decompiler drivers for the two `decompile-*` skills (both apply architecture-aware library signatures so library functions get real names instead of `sub_*` — IDA via FLIRT, scoped to the detected compiler's `sig/<proc>/` plus Go/Rust runtimes and an `--aggressive` tier; BN via WARP + the signature matcher, with no Rust coverage); and the `asm-recon` collector (`recon.py` plus a bundled stdlib-only DNS client `dnsmini.py` — the skill is deliberately pure-stdlib, no pip packages).
+- `scripts/` — helper code Claude invokes via Bash. Python analyzers for `binary-analysis`, `office-analysis`, `skill-security-validator`, and `macho-expert` (`macho_triage.py`); a shell driver for `find-vulnerabilities`; headless-decompiler drivers for the two `decompile-*` skills (both apply architecture-aware library signatures so library functions get real names instead of `sub_*` — IDA via FLIRT, scoped to the detected compiler's `sig/<proc>/` plus Go/Rust runtimes and an `--aggressive` tier; BN via WARP + the signature matcher, with no Rust coverage); and the `asm-recon` collector (`recon.py` plus a bundled stdlib-only DNS client `dnsmini.py` — the skill is deliberately pure-stdlib, no pip packages).
 - `references/` (or `reference/`) — material loaded on-demand for deeper context (MITRE ATT&CK mappings, output templates, format/standard deep-dives, tool cheat sheets, worked examples). Not loaded by default. The "expert" skills (`elf-expert`, `dwarf-expert`, `macho-expert`) are reference-heavy: a thin `SKILL.md` plus several reference files covering format internals, coding patterns, and tooling.
 - `assets/` — copy-ready templates Claude emits or fills in (e.g. `yara-rule-authoring-review/assets/rule_template.yar`).
 
@@ -42,7 +42,7 @@ Several skills emit structured reports with explicit verdicts (`CLEAN / LOW / ME
 
 There is no build, lint, or test step for this repo — skills are loaded automatically by Claude Code from `skills/`.
 
-- `skills/find-vulns/scripts/find-vulns.sh <source-file> [output-file]` — the only bundled end-user CLI; runs the `find-vulns` skill headless via the `claude` CLI with pre-approved tools.
+- `skills/find-vulnerabilities/scripts/find-vulnerabilities.sh <source-file> [output-file]` — the only bundled end-user CLI; runs the `find-vulnerabilities` skill headless via the `claude` CLI with pre-approved tools.
 - The Python analyzers (`binary_analyzer.py`, `office_analyzer.py`, `skill_validator.py`, `vt_scan.py`) and decompiler drivers are expected to be invoked through their SKILL.md flows. They can be run standalone for development, but argument shapes and exit codes are not stable contracts.
 
 ## Security Considerations

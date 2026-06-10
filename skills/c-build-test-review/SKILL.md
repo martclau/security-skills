@@ -189,7 +189,7 @@ Things to look for and flag:
 
 - **No unit-test framework at all** → recommend one (Google Test if C++ harness is acceptable; Unity or CUnit for pure C)
 - **Tests build with release flags** → tests should run with `-g3`, low optimization, and sanitizers on
-- **Tests only exercise happy paths** → flag missing error-path coverage explicitly; the chapter's `get_error` example is the canonical case of "tests passed but the error branch was never exercised, and there was a real bug there"
+- **Tests only exercise happy paths** → flag missing error-path coverage explicitly; "tests passed but the error branch was never exercised, and there was a real bug there" is the canonical way defects survive a green suite
 - **Tests don't run in CI** → flag this; tests that aren't continuously run rot
 - **Tests don't run under sanitizers in CI** → flag this; one of the highest-value low-effort additions to almost any C project
 - **`extern "C"`** missing around C headers in a C++ test harness (e.g., Google Test) → linker errors due to name mangling

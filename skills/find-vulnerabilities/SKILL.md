@@ -1,5 +1,5 @@
 ---
-name: find-vulns
+name: find-vulnerabilities
 description: >
   Scan source code files for security vulnerabilities, rank them by severity,
   and produce a structured report with CWE IDs, root causes, proof-of-concept
@@ -9,7 +9,11 @@ description: >
   "pen-test this source", or any variation of scanning source files for
   security issues — even if they don't use the word "vulnerability" explicitly.
   Also trigger when the user uploads a C/C++/Rust/Go/Python/JS file and asks
-  for a "review" or "audit" in a security context.
+  for a "review" or "audit" in a security context. Use this skill to DISCOVER
+  new vulnerabilities in source; if the user instead hands you an existing
+  vulnerability report and asks whether its findings are real or exploitable,
+  use validate-vulnerability. For build flags, sanitizers, and test configuration, use
+  c-build-test-review.
 ---
 
 # Vulnerability Scanner
@@ -28,8 +32,9 @@ severity-ranked report.
 
 ### 1. Identify the target
 
-Determine which file(s) to scan. If the user uploaded files, find them in
-`/mnt/user-data/uploads/`. If they reference a filename, locate it. If multiple
+Determine which file(s) to scan. Use the path the user gave; in claude.ai
+contexts, uploaded files land in `/mnt/user-data/uploads/`. If they reference
+a filename without a path, locate it. If multiple
 files are involved, scan each one individually and cross-reference shared
 vulnerabilities (e.g., a library function misused by multiple callers).
 
@@ -110,15 +115,15 @@ End with a **Summary table** sorted by severity:
 ## Standalone CLI usage
 
 This skill bundles a shell script for use with Claude Code CLI in headless
-(non-interactive) mode. The script lives at `scripts/find-vulns.sh`.
+(non-interactive) mode. The script lives at `scripts/find-vulnerabilities.sh`.
 
 ```bash
 # Basic usage
-./find-vulns.sh <source-file> [output-file]
+./find-vulnerabilities.sh <source-file> [output-file]
 
 # Examples
-./find-vulns.sh uasn1.c
-./find-vulns.sh src/parser.c /tmp/vulns.txt
+./find-vulnerabilities.sh uasn1.c
+./find-vulnerabilities.sh src/parser.c /tmp/vulns.txt
 ```
 
 The script handles:
@@ -129,4 +134,4 @@ The script handles:
   piped through `jq`
 - Post-run verification that the report file was actually created
 
-Read `scripts/find-vulns.sh` if you need to see or adapt the CLI invocation.
+Read `scripts/find-vulnerabilities.sh` if you need to see or adapt the CLI invocation.

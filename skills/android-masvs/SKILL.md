@@ -12,6 +12,7 @@ description: >
   "MASVS" explicitly. Also trigger when the user uploads a `.apk`, `.aab`,
   `.xapk`, or Android project and asks for a "security review", "audit",
   "hardening review", or "pen-test".
+allowed-tools: Bash(bash *), Bash(apktool *), Bash(jadx *), Bash(aapt2 *), Bash(apksigner *), Bash(unzip *), Bash(rg *), Bash(grep *), Bash(file *), Bash(ls *), Bash(readelf *)
 ---
 
 # Android MASVS Assessment
@@ -39,9 +40,10 @@ the earlier ones produced the expected files.
 ### Phase 1 — Identify the target
 
 Find the artifact to assess. Check, in order:
-1. `/mnt/user-data/uploads/` for `.apk`, `.aab`, `.xapk`, or `.zip` of a project
-2. A path the user mentioned explicitly
-3. The current working directory
+1. A path the user mentioned explicitly
+2. The current working directory
+3. In claude.ai contexts, `/mnt/user-data/uploads/` for `.apk`, `.aab`,
+   `.xapk`, or `.zip` of a project
 
 If you get an `.aab` (Android App Bundle), the user usually wants the same
 checks — note it in the report and process it the same way (it's a zip, just
@@ -56,7 +58,7 @@ target.
 Run the unpack script:
 
 ```bash
-bash scripts/unpack_apk.sh <path/to/app.apk> <workdir>
+bash "${CLAUDE_SKILL_DIR}/scripts/unpack_apk.sh" <path/to/app.apk> <workdir>
 ```
 
 This decodes the APK with `apktool` (or falls back to `unzip` + `aapt2` if
@@ -178,10 +180,11 @@ Bulleted list of things that can't be confirmed without runtime testing
 
 ### Phase 6 — Save and present
 
-Write `findings.md` to `/mnt/user-data/outputs/` (or the workdir if outputs/
-isn't available), then call `present_files` with that path. If the report is
-long, also drop a short summary in chat — the table of findings — so the user
-can see the headline without opening the file.
+Write `findings.md` to the workdir and give the user its path (in claude.ai
+contexts, write to `/mnt/user-data/outputs/` and present it with the
+`present_files` tool). If the report is long, also drop a short summary in
+chat — the table of findings — so the user can see the headline without
+opening the file.
 
 ## Severity scale
 

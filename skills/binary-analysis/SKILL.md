@@ -6,6 +6,11 @@ description: >
   issues, malware indicators, vulnerabilities, or reverse-engineering insights. Trigger on
   phrases like "analyze this binary", "check this executable", "suspicious binary",
   "reverse engineer", "malware sample", "ELF/PE/Mach-O analysis", or "what does this binary do".
+  This skill performs end-to-end security triage and emits a risk verdict. For
+  questions about a specific container's format/ABI internals or to inspect or
+  modify it, prefer elf-expert or macho-expert; for full function-by-function
+  decompilation, use decompile-binaryninja or decompile-idapro.
+allowed-tools: Bash(python3 *), Bash(file *), Bash(ls *), Bash(strings *), Bash(nm *), Bash(objdump *)
 ---
 
 # Binary Security Analysis Skill
@@ -140,9 +145,9 @@ objdump -p "$WORK_DIR/target" 2>/dev/null | grep -A5 "Import"
 If `pefile` is available:
 
 ```bash
-python3 - <<'EOF'
+python3 - "$WORK_DIR/target" <<'EOF'
 import pefile, sys
-pe = pefile.PE("$WORK_DIR/target")
+pe = pefile.PE(sys.argv[1])
 for entry in pe.DIRECTORY_ENTRY_IMPORT:
     print(entry.dll.decode())
     for imp in entry.imports:
@@ -166,7 +171,7 @@ High entropy (> 7.0) in a section often indicates packing, encryption, or compre
 Run the bundled script for per-section entropy (works for both ELF and PE):
 
 ```bash
-python3 <skill-path>/scripts/binary_analyzer.py --entropy "$WORK_DIR/target"
+python3 "${CLAUDE_SKILL_DIR}/scripts/binary_analyzer.py" --entropy "$WORK_DIR/target"
 ```
 
 The `--entropy` run **always** prints a packing assessment alongside the entropy table — a
@@ -205,7 +210,7 @@ For non-UPX packers, unpack in an instrumented sandbox / dump from memory first.
 checksec --file="$WORK_DIR/target" 2>/dev/null
 
 # Manual fallback via readelf
-python3 <skill-path>/scripts/binary_analyzer.py --checksec "$WORK_DIR/target"
+python3 "${CLAUDE_SKILL_DIR}/scripts/binary_analyzer.py" --checksec "$WORK_DIR/target"
 ```
 
 Feature checklist for ELF:
@@ -222,7 +227,7 @@ Feature checklist for ELF:
 ### PE security features
 
 ```bash
-python3 <skill-path>/scripts/binary_analyzer.py --pe-security "$WORK_DIR/target"
+python3 "${CLAUDE_SKILL_DIR}/scripts/binary_analyzer.py" --pe-security "$WORK_DIR/target"
 ```
 
 Feature checklist for PE:
@@ -244,7 +249,7 @@ Feature checklist for PE:
 Run the full heuristic scan with the bundled script:
 
 ```bash
-python3 <skill-path>/scripts/binary_analyzer.py --heuristics "$WORK_DIR/target" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/binary_analyzer.py" --heuristics "$WORK_DIR/target" \
     --strings "$WORK_DIR/strings.txt" \
     -o "$WORK_DIR/heuristics.json"
 ```
@@ -268,7 +273,7 @@ python3 <skill-path>/scripts/binary_analyzer.py --heuristics "$WORK_DIR/target" 
 Look up the SHA-256 hash in VirusTotal threat intelligence (no upload required):
 
 ```bash
-python3 <skill-path>/scripts/binary_analyzer.py --vt-hash <SHA256> \
+python3 "${CLAUDE_SKILL_DIR}/scripts/binary_analyzer.py" --vt-hash <SHA256> \
     --no-color -o "$WORK_DIR/vt_report.json"
 ```
 
@@ -305,7 +310,8 @@ Use the most severe applicable verdict:
 2. **File identification** -- format, arch, hash, size, strip status.
 3. **Security features** -- table of enabled/disabled mitigations with risk commentary.
 4. **String analysis** -- top suspicious strings with interpretation.
-5. **Import analysis** -- suspicious API calls grouped by MITRE ATT&CK tactic.
+5. **Import analysis** -- suspicious API calls grouped by MITRE ATT&CK tactic
+   (technique IDs and mappings: `${CLAUDE_SKILL_DIR}/references/mitre-attck-binary.md`).
 6. **Entropy analysis** -- per-section results, packing assessment.
 7. **Behavioral indicators** -- heuristic findings by category.
 8. **VirusTotal result** -- hash lookup result if performed.

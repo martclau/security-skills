@@ -9,6 +9,7 @@ description: >
   runs an automated scanner, then interprets the results and gives the user actionable
   recommendations. Use it even if the user just uploads a .skill file or a folder and says
   "check this" or "is this safe".
+allowed-tools: Bash(python3 *)
 ---
 
 # Skill Security Validator
@@ -68,14 +69,12 @@ a valid skill directory.
 
 ```bash
 # Terminal report (for display)
-python3 <skill-path>/scripts/skill_validator.py <target-skill-path>
+python3 "${CLAUDE_SKILL_DIR}/scripts/skill_validator.py" <target-skill-path>
 
 # JSON report (for your analysis)
-python3 <skill-path>/scripts/skill_validator.py <target-skill-path> \
+python3 "${CLAUDE_SKILL_DIR}/scripts/skill_validator.py" <target-skill-path> \
     --no-color -o "$WORK_DIR/scan_report.json"
 ```
-
-Where `<skill-path>` is the path to *this* skill (skill-security-validator).
 
 The scanner includes:
 - Two-line sliding window to catch patterns split across consecutive lines
@@ -103,7 +102,7 @@ The script reads `VT_API_KEY` from the environment automatically. If the user de
 doesn't have a key, skip this step.
 
 ```bash
-python3 <skill-path>/scripts/vt_scan.py <target-skill-path> \
+python3 "${CLAUDE_SKILL_DIR}/scripts/vt_scan.py" <target-skill-path> \
     --no-color -o "$WORK_DIR/vt_report.json"
 ```
 
@@ -232,11 +231,10 @@ If everything is clean, say so clearly -- don't manufacture concerns.
 
 ## Step 6 -- Present the report
 
-```bash
-cp "$WORK_DIR/security_report.md" <skill-path>/outputs/security_report-<date>.md
-```
-
-Present the file and give a brief conversational summary of the verdict and key points.
+Write the finished report to `$WORK_DIR/security_report.md` and present it from there,
+with a brief conversational summary of the verdict and key points. Never write scan
+outputs into this skill's directory or anywhere inside a repository — they are
+per-run artifacts, not source.
 
 ---
 
