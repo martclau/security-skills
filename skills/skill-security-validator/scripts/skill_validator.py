@@ -459,11 +459,10 @@ def scan_file(filepath: Path, findings: list[Finding], all_urls: list[str]):
     file_urls = extract_urls(text)
     all_urls.extend(file_urls)
 
-    # Single-line rules
+    # Single-line pass — runs ALL rules, including multiline ones, so a pattern
+    # that matches within one line is reported exactly once here.
     for line_num, line in enumerate(lines, start=1):
         for pattern, severity, category, description, is_multiline in RULES:
-            if is_multiline:
-                continue
             if pattern.search(line):
                 snippet = line.strip()[:120]
                 line_urls = extract_urls(line)
@@ -477,13 +476,18 @@ def scan_file(filepath: Path, findings: list[Finding], all_urls: list[str]):
                     extracted_urls=line_urls,
                 ))
 
-    # Two-line sliding window for multiline rules (addresses review 2.1)
+    # Two-line sliding window for multiline rules (addresses review 2.1).
+    # Only emit when the match genuinely spans the line boundary — i.e. it
+    # matches the joined text but neither line on its own — otherwise an
+    # in-line match would be double-counted here (once per adjacent window)
+    # on top of the single-line pass above.
     for i in range(len(lines) - 1):
         combined = lines[i] + " " + lines[i + 1]
         for pattern, severity, category, description, is_multiline in RULES:
             if not is_multiline:
                 continue
-            if pattern.search(combined):
+            if pattern.search(combined) and not pattern.search(lines[i]) \
+                    and not pattern.search(lines[i + 1]):
                 snippet = (lines[i].strip() + " | " + lines[i + 1].strip())[:120]
                 line_urls = extract_urls(combined)
                 findings.append(Finding(
@@ -663,8 +667,12 @@ COLORS = {
 }
 
 
-def print_report(result: ScanResult, use_color: bool = True):
+def print_report(result: ScanResult, use_color: bool = True, min_severity: int = None):
+    """Render the report. counts/verdict always reflect ALL findings; only the
+    per-finding listing is filtered to `min_severity` (a rank, lower = more
+    severe) when one is given."""
     c = COLORS if use_color else {k: "" for k in COLORS}
+    severity_rank = {s.value: i for i, s in enumerate(Severity)}
 
     print()
     print(f"{c['BOLD']}{'=' * 70}{c['RESET']}")
@@ -701,11 +709,15 @@ def print_report(result: ScanResult, use_color: bool = True):
     print(f"  {' | '.join(parts)}")
     print(f"{c['BOLD']}{'-' * 70}{c['RESET']}")
 
-    if not result.findings:
-        print(f"\n  {c['BOLD']}No issues found.{c['RESET']}\n")
+    shown = result.findings
+    if min_severity is not None:
+        shown = [f for f in shown if severity_rank[f.severity.value] <= min_severity]
+
+    if not shown:
+        print(f"\n  {c['BOLD']}No issues at the selected severity.{c['RESET']}\n")
     else:
         categories: dict[str, list[Finding]] = {}
-        for f in result.findings:
+        for f in shown:
             categories.setdefault(f.category, []).append(f)
 
         for cat, findings in categories.items():
@@ -791,13 +803,10 @@ def main():
     for sd in skill_dirs:
         result = scan_skill(sd)
 
-        result.findings = [
-            f for f in result.findings
-            if min_sev_order[f.severity.value] <= min_sev_order[args.severity]
-               or min_sev_order[f.severity.value] <= min_sev
-        ]
-
-        print_report(result, use_color=not args.no_color)
+        # --severity only filters the DISPLAYED findings; counts, verdict, the
+        # JSON report, and the exit code below are always computed from the full
+        # finding set so a display filter can never mask a CRITICAL/HIGH.
+        print_report(result, use_color=not args.no_color, min_severity=min_sev)
         all_results.append(result)
 
         if result.counts["CRITICAL"] > 0 or result.counts["HIGH"] > 0:

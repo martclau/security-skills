@@ -138,7 +138,10 @@ def collect_crtsh_subdomains(domain, status):
         for row in json.loads(body):
             for name in str(row.get("name_value", "")).splitlines():
                 name = name.strip().lower().lstrip("*.")
-                if name.endswith(domain) and " " not in name:
+                # Label-boundary scope check: bare endswith(domain) would admit
+                # look-alikes such as notexample.com for example.com.
+                if (name == domain or name.endswith("." + domain)) \
+                        and " " not in name:
                     found.add(name)
         status["crtsh"] = "ok"
     except Exception as e:
@@ -173,7 +176,9 @@ def collect_certspotter_subdomains(domain, status):
         for row in json.loads(body):
             for name in row.get("dns_names", []):
                 name = str(name).strip().lower().lstrip("*.")
-                if name.endswith(domain) and " " not in name:
+                # Label-boundary scope check (see collect_crtsh_subdomains).
+                if (name == domain or name.endswith("." + domain)) \
+                        and " " not in name:
                     found.add(name)
         status["certspotter"] = "ok"
     except Exception as e:
@@ -305,7 +310,7 @@ def attempt_zone_transfer(domain, nameservers, status):
                                     "records_returned": len(names)}
             any_allowed = True
             for fq in names:
-                if fq.endswith(domain) and fq != domain:
+                if fq.endswith("." + domain):
                     leaked.add(fq)
         except Exception:
             block["results"][ns] = {"axfr_allowed": False,
@@ -792,9 +797,6 @@ def _mail_posture(domain, zr):
 # --------------------------------------------------------------------------- #
 # first_seen / last_seen carry-forward + diff
 # --------------------------------------------------------------------------- #
-
-TRACKED = ["domains", "subdomains", "web_hosts", "auth_surfaces"]
-
 
 def find_prior_json(outdir, exclude):
     candidates = sorted(

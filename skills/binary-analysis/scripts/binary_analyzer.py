@@ -85,14 +85,18 @@ def elf_sections(path: str) -> list[dict]:
 
     # Parse readelf -S output lines like:
     # [ 1] .text  PROGBITS  addr  off  size  ...
+    # Capture the type so NOBITS sections (e.g. .bss) can be skipped — they
+    # occupy no file bytes, so their reported size would otherwise be read from
+    # unrelated bytes at that file offset and pollute the entropy result.
     pattern = re.compile(
-        r'\[\s*\d+\]\s+(\S+)\s+\S+\s+[0-9a-f]+\s+([0-9a-f]+)\s+([0-9a-f]+)'
+        r'\[\s*\d+\]\s+(\S+)\s+(\S+)\s+[0-9a-f]+\s+([0-9a-f]+)\s+([0-9a-f]+)'
     )
     for line in out.splitlines():
         m = pattern.search(line)
         if m:
-            name, offset, size = m.group(1), int(m.group(2), 16), int(m.group(3), 16)
-            if size > 0:
+            name, stype = m.group(1), m.group(2)
+            offset, size = int(m.group(3), 16), int(m.group(4), 16)
+            if size > 0 and stype != "NOBITS":
                 sections.append({"name": name, "offset": offset, "size": size})
     return sections
 
@@ -361,11 +365,13 @@ def elf_checksec(binary_path: str) -> dict:
             ["readelf", "-l", binary_path], stderr=subprocess.DEVNULL, text=True
         )
         if "GNU_RELRO" in out:
-            # Full RELRO: also check for BIND_NOW in dynamic section
+            # Full RELRO: also check for eager binding in the dynamic section.
+            # readelf renders this as DT_BIND_NOW, or as a standalone "NOW" token
+            # in a FLAGS/FLAGS_1 line (DF_BIND_NOW / DF_1_NOW).
             dyn_out = subprocess.check_output(
                 ["readelf", "-d", binary_path], stderr=subprocess.DEVNULL, text=True
             )
-            full = "BIND_NOW" in dyn_out or "FLAGS" in dyn_out and "BIND_NOW" in dyn_out
+            full = "BIND_NOW" in dyn_out or re.search(r"\bNOW\b", dyn_out) is not None
             results["RELRO"] = {
                 "enabled": "full" if full else "partial",
                 "severity": "INFO" if full else "LOW",
@@ -536,12 +542,12 @@ HEURISTIC_RULES = [
     ("privilege_escalation","HIGH",   r"(chmod\s+[46]7[57]|chmod\s+\+s)",                      "SUID/SGID bit setting"),
     ("privilege_escalation","MEDIUM", r"(OpenProcessToken|AdjustTokenPrivileges)",               "Windows token privilege manipulation"),
     ("credential_access",   "HIGH",   r"/etc/shadow",                                           "Shadow password file access"),
-    ("credential_access",   "HIGH",   r"(SAM|SYSTEM|SECURITY)\x00",                            "Windows credential hive reference"),
+    ("credential_access",   "HIGH",   r"(config\\(SAM|SYSTEM|SECURITY)\b|HKLM\\(SAM|SECURITY))", "Windows credential hive reference"),
     ("credential_access",   "HIGH",   r"(lsass\.exe|MiniDumpWriteDump)",                        "LSASS / credential dumping"),
     ("credential_access",   "MEDIUM", r"(\.ssh/id_rsa|\.ssh/id_ed25519|known_hosts)",           "SSH private key path"),
     ("credential_access",   "MEDIUM", r"(AKIA[0-9A-Z]{16})",                                   "AWS access key pattern"),
     ("lateral_movement",    "HIGH",   r"(PsExec|wmic\s+/node|schtasks\s+/create\s+/s)",        "Remote execution utility"),
-    ("lateral_movement",    "MEDIUM", r"(445|\\\\.*\\IPC\$|SMB)",                              "SMB lateral movement indicator"),
+    ("lateral_movement",    "MEDIUM", r"(\\\\[^\\\s]+\\IPC\$|\\PIPE\\(svcctl|samr|lsarpc|winreg)|:445\b)", "SMB lateral movement indicator"),
     ("defense_evasion",     "HIGH",   r"(rm\s+-rf?\s+\$0|self.delete|DeleteFileA.*argv\[0\])", "Self-deletion"),
     ("defense_evasion",     "HIGH",   r"(wevtutil\s+cl|ClearEventLog|auditd\s+stop)",           "Log clearing"),
     ("defense_evasion",     "MEDIUM", r"(UPX!|MPRESS|Themida|VMProtect|ASPack)",               "Packer signature"),

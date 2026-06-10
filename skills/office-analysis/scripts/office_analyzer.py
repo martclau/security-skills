@@ -13,8 +13,10 @@ Modes:
   --entropy          Compute per-stream entropy for OLE files
 
 Outputs JSON by default; use --no-json for plain text.
-Requires: oletools (oleid, olevba, oledump), python-magic
-Optional: requests (for VT lookup), zipfile (stdlib)
+Optional: olefile (OLE2 triage / per-stream entropy), requests (VT lookup).
+The standalone modes here use only the Python standard library; the broader
+office-analysis workflow additionally drives external CLI tools (oletools,
+Didier Stevens tools) — see SKILL.md.
 """
 
 import argparse
@@ -37,12 +39,6 @@ try:
     HAS_OLEFILE = True
 except ImportError:
     HAS_OLEFILE = False
-
-try:
-    import magic
-    HAS_MAGIC = True
-except ImportError:
-    HAS_MAGIC = False
 
 try:
     import requests
@@ -183,8 +179,6 @@ def detect_format(path: str) -> dict:
     elif header[:5] == MAGIC_RTF or header[:6] == b'{\\rtf1':
         result['format'] = 'RTF'
         result['format_detail'] = 'Rich Text Format'
-    elif header[:2] == b'\x50\x4b' and b'mimetypeapplication/vnd' in header:
-        result['format'] = 'OOXML'
     else:
         result['format'] = 'unknown'
         result['format_detail'] = f'magic: {header[:8].hex()}'
@@ -293,8 +287,9 @@ def _triage_ooxml(path, report):
     names = zf.namelist()
     report['ooxml_parts'] = names
 
-    # vbaProject.bin
-    vba_parts = [n for n in names if 'vbaProject' in n or n.endswith('.bin')]
+    # vbaProject.bin (match the VBA project specifically — plain '.bin' would
+    # also flag the benign printerSettings*.bin / oleObject*.bin parts)
+    vba_parts = [n for n in names if 'vbaproject' in n.lower()]
     if vba_parts:
         report['vba_present'] = True
         report['indicators'].append(
@@ -379,12 +374,9 @@ def _triage_rtf(data: bytes, report):
 # ---------------------------------------------------------------------------
 
 def check_equation(path: str) -> dict:
-    """Scan OLE file for Equation Editor CLSID and surrounding bytes."""
+    """Scan a file for the Equation Editor CLSID and surrounding bytes. Works on
+    the raw bytes, so it needs no OLE parser."""
     result = {'path': path, 'equation_editor_found': False, 'findings': []}
-    if not HAS_OLEFILE:
-        result['error'] = 'olefile not installed (pip install olefile)'
-        return result
-
     data = open(path, 'rb').read()
     offset = 0
     while True:
