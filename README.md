@@ -97,7 +97,7 @@ Maps and continuously monitors the external attack surface of domains the user *
 
 **How it works:**
 
-1. **Passive collection** — RDAP registration data, certificate-transparency subdomain discovery (crt.sh + CertSpotter, unioned so one source being down never zeroes out enumeration), and Team Cymru ASN/CIDR enrichment. No packets to the target.
+1. **Passive collection** — RDAP registration data, certificate-transparency subdomain discovery (crt.sh + CertSpotter, unioned so one source being down never zeroes out enumeration, and label-boundary scoped to the owned apex so look-alike domains never enter the run), and Team Cymru ASN/CIDR enrichment. No packets to the target.
 2. **No-impact active collection** — resolves DNS for discovered hosts, one HTTP(S) GET per host (following redirects to fingerprint the *final* host), one TLS handshake, and reads `/robots.txt`, `/sitemap.xml`, `/.well-known/security.txt`, and the favicon.
 3. **Mail posture** — derives SPF/DKIM/DMARC and flags spoofable domains.
 4. **Zone-transfer audit** — attempts AXFR against each authoritative nameserver. This is a configuration audit, not an attack; a successful transfer is a finding.
@@ -228,7 +228,7 @@ Reviews a C/C++ project's build configuration, compiler flags, assertion discipl
 
 ### decompile-binaryninja
 
-Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), writing one `.c` file per function under `<binary>.dec/`.
+Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), writing one `.c` file per function under `<binary>.bn.dec/`.
 
 **Trigger phrases:** "decompile with BN", "decompile with Binary Ninja"
 
@@ -239,7 +239,7 @@ Decompiles a binary using Binary Ninja headless mode (HLIL / "Pseudo C" layer), 
 3. Opens the binary with `binaryninja.load()`, waits for full analysis, then iterates `bv.functions`
 4. Names library functions automatically — WARP + the signature matcher cover C/C++ runtimes (`libc6`, `libgcc`, `libstdc++`, `msvcrt`) and `.gopclntab` covers Go. BN ships no Rust signature library, so stripped Rust std/crate functions stay `sub_*` (unlike `decompile-idapro`, which applies bundled Rust FLIRT sigs)
 5. Decompiles each function via `func.hlil`; functions with no HLIL (imports, data) are silently skipped
-6. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`, matching the haruspex naming convention
+6. Writes pseudocode to `<binary>.bn.dec/<funcname>@<ADDR>.c`, matching the haruspex naming convention
 
 **Requirements:** Binary Ninja Commercial or above (headless requires a commercial license). Install path defaults to `~/Downloads/binaryninja/`; override with `BN_DIR`.
 
@@ -264,7 +264,7 @@ Assesses an Android application against the OWASP Mobile Application Security Ve
 
 ### decompile-idapro
 
-Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decompiler, writing one `.c` file per non-thunk function under `<binary>.dec/`.
+Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decompiler, writing one `.c` file per non-thunk function under `<binary>.ida.dec/`.
 
 **Trigger phrases:** "decompile with IDA", "decompile with IDA Pro"
 
@@ -276,7 +276,7 @@ Decompiles a binary using IDA Pro 9.x idalib (headless) with the Hex-Rays decomp
 4. Loads the architecture-appropriate Hex-Rays plugin (e.g. `hexx64` for x86-64) explicitly — required in headless/idalib mode
 5. Applies FLIRT library signatures on every run, from the architecture-appropriate `sig/<proc>/` dir (x86, ARM, MIPS, …) scoped to the detected compiler, plus Go-stdlib and Rust-std signatures for those runtimes, so library functions get real names instead of `sub_*`. `--aggressive` adds the broad/expensive sets (all Rust versions, distro packages, Windows VS-channels) on top of maxed analysis flags + full re-plan. Applied groups are recorded in the `index.json` manifest (`meta.signatures`).
 6. Iterates all functions, skips thunks (`FUNC_THUNK`), decompiles the rest via `ida_hexrays.decompile()`
-7. Writes pseudocode to `<binary>.dec/<funcname>@<ADDR>.c`; license errors are fatal, other decompiler errors are skipped
+7. Writes pseudocode to `<binary>.ida.dec/<funcname>@<ADDR>.c`; license errors are fatal, other decompiler errors are skipped
 
 **Requirements:** IDA Pro 9.x with a valid Hex-Rays decompiler license. Install path defaults to `~/.local/share/applications/IDA Professional 9.3/`.
 
